@@ -435,7 +435,7 @@ cmake --build . -j
 ## 2. Run example config
 
 ```bash
-./marsh_cli ../example_run.yaml
+./marsh_cli ../example_runs/run_edge_distance_50yr.yaml
 ```
 
 ## 3. Inspect screen output
@@ -496,9 +496,23 @@ See the `LICENSE` file for details.
 
 This code is an update and redesign of the marsh modelling framework associated with:
 
-- **Mudd et al. (2009, ECSS)**
+- Mudd, S.M., Howell, S.M., Morris, J.T., 2009. Impact of dynamic feedbacks between sedimentation, sea-level rise, and biomass production on near-surface marsh stratigraphy and carbon accumulation. Estuarine, Coastal and Shelf Science 82, 377–389. https://doi.org/10.1016/j.ecss.2009.01.028
 
-The current two-stage compaction formulation is informed by:
+This model evolved with a more complex particle settling component build on the basis of
 
-- **Brain et al. (2012)**
+- Mudd, S.M., D’Alpaos, A., Morris, J.T., 2010. How does vegetation affect sedimentation on tidal marshes? Investigating particle capture and hydrodynamic controls on biologically mediated sedimentation. Journal of Geophysical Research: Earth Surface 115. https://doi.org/10.1029/2009JF001566
+
+Which was then used in:
+
+- Kirwan, M.L., Mudd, S.M., 2012. Response of salt-marsh carbon accumulation to climate change. Nature 489, 550–553. https://doi.org/10.1038/nature11440
+
+However, recent papers have suggested the mixing of the sediment column and low velocities on marsh surface mean that deposition is dominated by length from channel, initial suspended sediment concentration, and nothing else, and we have implemented such a model in this software:
+
+- Duran Vinent, O., Herbert, E.R., Coleman, D.J., Himmelstein, J.D., Kirwan, M.L., 2021. Onset of runaway fragmentation of salt marshes. One Earth 4, 506–516. https://doi.org/10.1016/j.oneear.2021.02.013
+
+
+The compaction model has been updated to reflect:
+
+- Brain, M.J., Long, A.J., Woodroffe, S.A., Petley, D.N., Milledge, D.G., Parnell, A.C., 2012. Modelling the effects of sediment compaction on salt marsh reconstructions of recent sea-level rise. Earth and Planetary Science Letters 345–348, 180–193. https://doi.org/10.1016/j.epsl.2012.06.045
+
 

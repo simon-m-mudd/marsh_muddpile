@@ -1,0 +1,200 @@
+# -----------------------------------------------------------------------------
+# Simulation control block.
+#
+# This chooses the process modules and defines the nominal simulation duration.
+# -----------------------------------------------------------------------------
+simulation:
+  start_year: 0
+  end_year: 50
+  dt_days: 365.0
+
+  deposition_model_name: tke_deposition
+  biomass_model_name: seasonal_biomass
+  root_allocation_model_name: exponential_root_allocation
+  decay_model_name: first_order_decay
+  compaction_model_name: two_stage_compaction
+
+# -----------------------------------------------------------------------------
+# Global physical constants and numerical control parameters.
+# -----------------------------------------------------------------------------
+parameters:
+  water_density_kg_m3: 1000.0
+  gravity_m_s2: 9.81
+
+  layer_merging_enable: 1.0
+  layer_merging_max_layers: 200.0
+  layer_merging_minimum_unmerged_depth_m: 0.30
+  layer_merging_target_thickness_m: 0.05
+
+# -----------------------------------------------------------------------------
+# Organic matter decay parameters.
+# -----------------------------------------------------------------------------
+  decay_reference_temperature_c: 20.0
+  decay_temperature_factor_per_degree: 0.25
+  decay_use_exact_solution: 1.0
+
+# -----------------------------------------------------------------------------
+# Two-stage compaction parameters.
+# -----------------------------------------------------------------------------
+  compaction_loi_intercept_percent: 0.0
+  compaction_loi_slope_percent_per_organic_fraction: 100.0
+  compaction_default_grain_size_m: 2.0e-5
+
+  compaction_e_1_intercept: 0.50
+  compaction_e_1_loi_slope: 0.040
+  compaction_e_1_grain_size_slope: 0.0
+
+  compaction_c_r_intercept: 0.005
+  compaction_c_r_loi_slope: 0.0015
+  compaction_c_r_grain_size_slope: 0.0
+
+  compaction_c_c_intercept: 0.10
+  compaction_c_c_loi_slope: 0.020
+  compaction_c_c_grain_size_slope: 0.0
+
+  compaction_sigma_y_intercept_kpa: 12.0
+  compaction_sigma_y_loi_slope: -0.15
+  compaction_sigma_y_grain_size_slope: 0.0
+
+  compaction_min_e_1: 0.10
+  compaction_min_c_r: 1.0e-4
+  compaction_min_c_c: 1.0e-3
+  compaction_min_sigma_y_kpa: 3.0
+  compaction_min_effective_stress_kpa: 0.01
+  compaction_reference_stress_kpa: 1.0
+  compaction_min_void_ratio: 0.01
+
+# -----------------------------------------------------------------------------
+# Root allocation parameters.
+# -----------------------------------------------------------------------------
+  root_efolding_depth_m: 0.10
+  root_profile_normalize_to_column: 1.0
+  root_allocation_to_labile_fraction: 0.842
+  root_allocation_to_refractory_fraction: 0.158
+
+# -----------------------------------------------------------------------------
+# Seasonal biomass parameters.
+# -----------------------------------------------------------------------------
+  biomass_days_per_year: 365.0
+  biomass_min_depth_m: -0.10
+  biomass_max_depth_m: 0.30
+  biomass_max_biomass_g_m2: 1500.0
+  biomass_temperature_factor_per_degree: 0.06
+  biomass_reference_temperature_c: 20.0
+  biomass_min_fraction_of_peak: 0.1
+  biomass_day_peak_season_days: 200.0
+  biomass_peak_growth_rate_fraction_per_day: 0.02
+  biomass_min_growth_rate_fraction_per_day: 0.002
+  biomass_phase_shift_days: 30.0
+  biomass_bg_to_ag_slope: 1.0
+  biomass_bg_to_ag_intercept: 0.5
+  biomass_bg_to_ag_minimum: 0.1
+
+# -----------------------------------------------------------------------------
+# TKE deposition parameters.
+# -----------------------------------------------------------------------------
+  deposition_time_fractions_per_tide: 15000.0
+  deposition_min_water_depth_m: 0.002
+
+  deposition_reference_biomass_g_m2: 200.0
+  deposition_reference_flow_velocity_m_s: 0.05
+  deposition_limiting_flow_velocity_m_s: 0.10
+
+  deposition_alpha: 0.55
+  deposition_beta: 0.40
+  deposition_mu: 0.00066
+  deposition_phi: 0.29
+  deposition_kappa: 0.224
+  deposition_nu_m2_s: 1.0e-5
+
+  deposition_gamma_tr: 0.718
+  deposition_epsilon: 2.08
+
+  deposition_aa: 0.46
+  deposition_bb: 3.8
+  deposition_alpha_turb: 0.9
+  deposition_alpha_zero: 11.0
+
+  deposition_tke_coefficient: 0.20
+  deposition_von_karman: 0.40
+  deposition_water_density_kg_m3: 1000.0
+
+  deposition_concentration_silt_kg_m3: 0.02
+
+# -----------------------------------------------------------------------------
+# Material definitions.
+# -----------------------------------------------------------------------------
+materials:
+  - name: sand
+    category: mineral
+    density: 2650.0
+    allow_surface_deposition: false
+    settling:
+      diameter: 2.0e-4
+      settling_velocity: 2.0e-2
+
+  - name: silt
+    category: mineral
+    density: 2600.0
+    allow_surface_deposition: true
+    settling:
+      diameter: 2.0e-5
+      settling_velocity: 3.7e-5
+
+  - name: refractory_organic
+    category: organic_refractory
+    density: 1400.0
+    allow_root_input: true
+    decay:
+      k_0: 0.001
+      gamma: 0.25
+      temperature_sensitive: true
+
+  - name: labile_organic
+    category: organic_labile
+    density: 1200.0
+    allow_root_input: true
+    decay:
+      k_0: 0.01
+      gamma: 0.10
+      temperature_sensitive: true
+
+  - name: roots
+    category: live_root
+    density: 1100.0
+    allow_root_input: true
+
+# -----------------------------------------------------------------------------
+# Constant forcing block.
+#
+# This expands internally to 50 annual forcing steps.
+# -----------------------------------------------------------------------------
+forcing:
+  constant:
+    n_steps: 50
+    dt_days: 365.0
+    start_time_days: 365.0
+
+    mean_sea_level: 0.0
+    mean_high_tide: 0.5
+    tidal_amplitude: 0.5
+    tidal_period_hours: 12.4
+    temperature: 20.0
+    suspended_sediment_concentration: 0.02
+    fine_sediment_concentration: 0.0
+    external_pb210_supply: 0.0
+
+# -----------------------------------------------------------------------------
+# Initial condition block.
+#
+# This creates a 0.50 m thick pile of sand using 100 layers.
+# The loader should compute per-layer mass from thickness, porosity, and the
+# density of the "sand" material.
+# -----------------------------------------------------------------------------
+initial_state:
+  uniform_column:
+    n_layers: 100
+    total_thickness_m: 0.50
+    porosity: 0.40
+    age_days: 0.0
+    fill_material: sand
