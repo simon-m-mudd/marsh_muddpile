@@ -44,6 +44,11 @@ std::shared_ptr<deposition_model> process_factory::create_deposition_model(
     {
         return std::make_shared<tke_deposition_model>();
     }
+    if (name == "edge_distance_deposition")
+    {
+        return std::make_shared<edge_distance_deposition_model>();
+    }
+
 
     throw std::invalid_argument("unknown deposition model: " + name);
 }
