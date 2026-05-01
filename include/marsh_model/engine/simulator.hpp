@@ -1,8 +1,28 @@
 #pragma once
 
+// simulator.hpp
+//
+// Part of marsh_muddpile-- https://github.com/simon-m-mudd/marsh_muddpile
+//
+// Copyright (C) 2026 Simon M. Mudd
+// Released under the GNU General Public Licence v3 (GPL-3.0)
+// See LICENSE file or https://www.gnu.org/licenses/gpl-3.0.html
+//
+// -----------------------------------------------------------------------------
+// this component coordinates the marsh model processes through time.
+//
+// it is responsible for evolving the column state and collecting aggregate
+// diagnostics and optional in-memory column snapshots.
+//
+// output writing itself is intentionally not handled here, so the solver remains
+// reusable for inversion and ensemble workflows.
+//
+// -----------------------------------------------------------------------------
+
 #include "marsh_model/core/column_state.hpp"
 #include "marsh_model/core/forcing_series.hpp"
 #include "marsh_model/core/material_catalog.hpp"
+#include "marsh_model/core/output_config.hpp"
 #include "marsh_model/core/parameter_set.hpp"
 #include "marsh_model/core/simulation_config.hpp"
 #include "marsh_model/core/simulation_result.hpp"
@@ -11,6 +31,7 @@
 #include "marsh_model/processes/decay_model.hpp"
 #include "marsh_model/processes/deposition_model.hpp"
 #include "marsh_model/processes/root_allocation_model.hpp"
+
 #include <memory>
 
 namespace marsh_model
@@ -30,7 +51,8 @@ public:
         const material_catalog& catalog,
         const parameter_set& parameters,
         const forcing_series& forcing,
-        column_state initial_state) const;
+        column_state initial_state,
+        const output_config& output) const;
 
 private:
     std::shared_ptr<deposition_model> deposition_;

@@ -19,6 +19,7 @@
 //   - explicit initial state layers
 //   - repeated initial layers
 //   - compact uniform initial columns
+//   - output and snapshot settings
 //
 // layer ordering convention:
 //   - layers are listed deepest to surface
@@ -38,7 +39,6 @@
 
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace marsh_model
@@ -192,6 +192,38 @@ parameter_set parse_parameter_set(const YAML::Node& node)
     }
 
     return parameters;
+}
+
+output_config parse_output_config(const YAML::Node& node)
+{
+    output_config output;
+
+    if (!node)
+    {
+        return output;
+    }
+
+    output.file =
+        get_optional_scalar<std::string>(node, "file", "run_output.nc");
+
+    output.write_time_series =
+        get_optional_scalar<bool>(node, "write_time_series", true);
+
+    output.write_column_snapshots =
+        get_optional_scalar<bool>(node, "write_column_snapshots", false);
+
+    output.snapshot_every_n_steps =
+        get_optional_scalar<int>(node, "snapshot_every_n_steps", 0);
+
+    if (node["snapshot_times_days"])
+    {
+        for (const auto& value : node["snapshot_times_days"])
+        {
+            output.snapshot_times_days.push_back(value.as<double>());
+        }
+    }
+
+    return output;
 }
 
 forcing_series parse_forcing_steps(const YAML::Node& steps_node)
@@ -611,6 +643,7 @@ loaded_run_config config_io::load_run_config(const std::string& yaml_file)
     config.materials = parse_material_catalog(root["materials"]);
     config.forcing = parse_forcing_series(root["forcing"]);
     config.initial_state = parse_initial_state(root["initial_state"], config.materials);
+    config.output = parse_output_config(root["output"]);
 
     return config;
 }

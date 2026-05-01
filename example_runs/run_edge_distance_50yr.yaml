@@ -175,3 +175,16 @@ initial_state:
     porosity: 0.40
     age_days: 0.0
     fill_material: sand
+
+# -----------------------------------------------------------------------------
+# Output block.
+#
+# This instructs the model to output time series data as well as column
+# snapshots at specific times.
+#
+# -----------------------------------------------------------------------------
+output:
+  file: run_output.nc
+  write_time_series: true
+  write_column_snapshots: true
+  snapshot_times_days: [3650.0, 7300.0, 10950.0, 14600.0, 18250.0]

@@ -12,20 +12,56 @@
 // the simulator computes biomass first, then passes the resulting vegetation
 // state to both root allocation and surface deposition.
 //
-// this version also includes a small safe performance improvement:
-// time-series storage is reserved up front, and new surface layers are only
-// appended if deposited mass is actually non-zero.
+// this version reserves time-series storage up front and can also collect
+// optional in-memory column snapshots at requested times or regular intervals.
+//
+// output writing is intentionally kept outside the solver itself.
 //
 // -----------------------------------------------------------------------------
 
 #include "marsh_model/engine/simulator.hpp"
 #include "marsh_model/engine/layer_merger.hpp"
 
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
 namespace marsh_model
 {
+namespace
+{
+bool should_save_snapshot(
+    const output_config& output,
+    int time_step_index,
+    double model_time_days)
+{
+    if (!output.write_column_snapshots)
+    {
+        return false;
+    }
+
+    if (output.snapshot_every_n_steps > 0)
+    {
+        if ((time_step_index + 1) % output.snapshot_every_n_steps == 0)
+        {
+            return true;
+        }
+    }
+
+    const double tolerance_days = 1.0e-9;
+
+    for (double requested_time_days : output.snapshot_times_days)
+    {
+        if (std::abs(model_time_days - requested_time_days) <= tolerance_days)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+}
+
 simulator::simulator(
     std::shared_ptr<deposition_model> deposition,
     std::shared_ptr<biomass_model> biomass,
@@ -49,26 +85,42 @@ simulation_result simulator::run_forward(
     const material_catalog& catalog,
     const parameter_set& parameters,
     const forcing_series& forcing,
-    column_state initial_state) const
+    column_state initial_state,
+    const output_config& output) const
 {
     column_state state = std::move(initial_state);
     simulation_result result;
 
     const int n_steps = forcing.size();
 
-    auto& model_time_days_ts = result.time_series["model_time_days"];
-    auto& surface_elevation_ts = result.time_series["surface_elevation"];
-    auto& peak_biomass_ts = result.time_series["peak_biomass"];
-    auto& aboveground_biomass_ts = result.time_series["aboveground_biomass"];
-    auto& belowground_biomass_ts = result.time_series["belowground_biomass"];
-    auto& belowground_mortality_ts = result.time_series["belowground_mortality"];
+    std::vector<double>* model_time_days_ts = nullptr;
+    std::vector<double>* surface_elevation_ts = nullptr;
+    std::vector<double>* peak_biomass_ts = nullptr;
+    std::vector<double>* aboveground_biomass_ts = nullptr;
+    std::vector<double>* belowground_biomass_ts = nullptr;
+    std::vector<double>* belowground_mortality_ts = nullptr;
+    std::vector<double>* n_layers_ts = nullptr;
 
-    model_time_days_ts.reserve(n_steps);
-    surface_elevation_ts.reserve(n_steps);
-    peak_biomass_ts.reserve(n_steps);
-    aboveground_biomass_ts.reserve(n_steps);
-    belowground_biomass_ts.reserve(n_steps);
-    belowground_mortality_ts.reserve(n_steps);
+    if (output.write_time_series)
+    {
+        model_time_days_ts = &result.time_series["model_time_days"];
+        surface_elevation_ts = &result.time_series["surface_elevation"];
+        peak_biomass_ts = &result.time_series["peak_biomass"];
+        aboveground_biomass_ts = &result.time_series["aboveground_biomass"];
+        belowground_biomass_ts = &result.time_series["belowground_biomass"];
+        belowground_mortality_ts = &result.time_series["belowground_mortality"];
+        n_layers_ts = &result.time_series["n_layers"];
+
+        model_time_days_ts->reserve(n_steps);
+        surface_elevation_ts->reserve(n_steps);
+        peak_biomass_ts->reserve(n_steps);
+        aboveground_biomass_ts->reserve(n_steps);
+        belowground_biomass_ts->reserve(n_steps);
+        belowground_mortality_ts->reserve(n_steps);
+        n_layers_ts->reserve(n_steps);
+
+        result.total_mass_by_material_time_series.reserve(n_steps);
+    }
 
     for (int i = 0; i < forcing.size(); ++i)
     {
@@ -102,14 +154,31 @@ simulation_result simulator::run_forward(
         compaction_->update_compaction(state, step, catalog, parameters);
         layer_merger::merge_layers_if_needed(state, parameters);
 
+        if (output.write_time_series)
+        {
+            model_time_days_ts->push_back(step.model_time_days);
+            surface_elevation_ts->push_back(state.get_surface_elevation());
+            peak_biomass_ts->push_back(biomass_flux.peak_biomass);
+            aboveground_biomass_ts->push_back(biomass_flux.aboveground_biomass);
+            belowground_biomass_ts->push_back(biomass_flux.belowground_biomass);
+            belowground_mortality_ts->push_back(biomass_flux.belowground_mortality);
+            n_layers_ts->push_back(static_cast<double>(state.n_layers()));
 
+            const Eigen::ArrayXd total_mass =
+                state.get_total_mass_by_material();
 
-        model_time_days_ts.push_back(step.model_time_days);
-        surface_elevation_ts.push_back(state.get_surface_elevation());
-        peak_biomass_ts.push_back(biomass_flux.peak_biomass);
-        aboveground_biomass_ts.push_back(biomass_flux.aboveground_biomass);
-        belowground_biomass_ts.push_back(biomass_flux.belowground_biomass);
-        belowground_mortality_ts.push_back(biomass_flux.belowground_mortality);
+            result.total_mass_by_material_time_series.emplace_back(
+                total_mass.data(),
+                total_mass.data() + total_mass.size());
+        }
+
+        if (should_save_snapshot(output, i, step.model_time_days))
+        {
+            column_snapshot snapshot;
+            snapshot.model_time_days = step.model_time_days;
+            snapshot.state = state;
+            result.column_snapshots.push_back(std::move(snapshot));
+        }
     }
 
     result.final_state = std::move(state);

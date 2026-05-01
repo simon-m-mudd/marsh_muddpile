@@ -84,6 +84,27 @@ else()
     message(FATAL_ERROR "yaml-cpp was found by CMake, but target yaml-cpp is missing.")
 endif()
 
+message(STATUS "Checking for pkg-config")
+find_package(PkgConfig REQUIRED)
+
+message(STATUS "Checking for NetCDF C")
+pkg_check_modules(NETCDF_C REQUIRED IMPORTED_TARGET netcdf)
+
+if(DEFINED NETCDF_C_VERSION)
+    message(STATUS "NetCDF C found: ${NETCDF_C_VERSION}")
+else()
+    message(STATUS "NetCDF C found")
+endif()
+
+message(STATUS "Checking for NetCDF C++4")
+pkg_check_modules(NETCDF_CXX REQUIRED IMPORTED_TARGET netcdf-cxx4)
+
+if(DEFINED NETCDF_CXX_VERSION)
+    message(STATUS "NetCDF C++4 found: ${NETCDF_CXX_VERSION}")
+else()
+    message(STATUS "NetCDF C++4 found")
+endif()
+
 # ------------------------------------------------------------------------------
 # optional OpenMP
 # ------------------------------------------------------------------------------
@@ -116,8 +137,8 @@ add_library(marsh_model_lib
     src/engine/process_factory.cpp
     src/engine/layer_merger.cpp
 
-
     src/io/config_io.cpp
+    src/io/result_io.cpp
 
     src/processes/zero_deposition_model.cpp
     src/processes/null_biomass_model.cpp
@@ -131,7 +152,6 @@ add_library(marsh_model_lib
     src/processes/seasonal_biomass_model.cpp
     src/processes/tke_deposition_model.cpp
     src/processes/edge_distance_deposition_model.cpp
-
 )
 
 target_include_directories(marsh_model_lib
@@ -143,6 +163,8 @@ target_link_libraries(marsh_model_lib
     PUBLIC
         Eigen3::Eigen
         yaml-cpp
+        PkgConfig::NETCDF_C
+        PkgConfig::NETCDF_CXX
 )
 
 target_compile_features(marsh_model_lib PUBLIC cxx_std_17)

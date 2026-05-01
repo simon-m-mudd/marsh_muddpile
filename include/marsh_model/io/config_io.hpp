@@ -17,14 +17,14 @@
 //   - material definitions
 //   - forcing time series
 //   - initial column state
-//
-// this is the first step in moving hard-coded setup out of marsh_cli.cpp.
+//   - output and snapshot settings
 //
 // -----------------------------------------------------------------------------
 
 #include "marsh_model/core/column_state.hpp"
 #include "marsh_model/core/forcing_series.hpp"
 #include "marsh_model/core/material_catalog.hpp"
+#include "marsh_model/core/output_config.hpp"
 #include "marsh_model/core/parameter_set.hpp"
 #include "marsh_model/core/simulation_config.hpp"
 
@@ -39,6 +39,7 @@ struct loaded_run_config
     material_catalog materials;
     forcing_series forcing;
     column_state initial_state;
+    output_config output;
 };
 
 class config_io

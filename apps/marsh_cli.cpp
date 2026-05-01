@@ -10,7 +10,8 @@
 // this application is the command-line interface for marsh_muddpile.
 //
 // it loads a yaml run configuration, constructs the requested process modules,
-// runs the forward model, and prints a summary of model diagnostics.
+// runs the forward model, writes requested outputs, and prints a summary of
+// model diagnostics.
 //
 // -----------------------------------------------------------------------------
 
@@ -18,6 +19,7 @@
 #include "marsh_model/engine/process_factory.hpp"
 #include "marsh_model/engine/simulator.hpp"
 #include "marsh_model/io/config_io.hpp"
+#include "marsh_model/io/result_io.hpp"
 
 #include <Eigen/Core>
 #include <iostream>
@@ -40,6 +42,19 @@ void print_run_summary(
     std::cout << "  root allocation: " << loaded.simulation.root_allocation_model_name << "\n";
     std::cout << "  decay: " << loaded.simulation.decay_model_name << "\n";
     std::cout << "  compaction: " << loaded.simulation.compaction_model_name << "\n";
+
+    std::cout << "\n";
+    std::cout << "output summary:\n";
+    std::cout << "  output file: " << loaded.output.file << "\n";
+    std::cout << "  write time series: " << (loaded.output.write_time_series ? "true" : "false") << "\n";
+    std::cout << "  write column snapshots: " << (loaded.output.write_column_snapshots ? "true" : "false") << "\n";
+    std::cout << "  saved snapshots: " << result.column_snapshots.size() << "\n";
+
+    const auto time_it = result.time_series.find("model_time_days");
+    if (time_it != result.time_series.end())
+    {
+        std::cout << "  time series points: " << time_it->second.size() << "\n";
+    }
 
     std::cout << "\n";
     std::cout << "final state summary:\n";
@@ -79,32 +94,50 @@ void print_run_summary(
                   << "\n";
     }
 
-    std::cout << "\n";
-    std::cout << "time series:\n";
+    const auto model_time_it = result.time_series.find("model_time_days");
+    const auto surface_it = result.time_series.find("surface_elevation");
+    const auto peak_it = result.time_series.find("peak_biomass");
+    const auto ag_it = result.time_series.find("aboveground_biomass");
+    const auto bg_it = result.time_series.find("belowground_biomass");
+    const auto mortality_it = result.time_series.find("belowground_mortality");
+    const auto n_layers_it = result.time_series.find("n_layers");
 
-    const auto& model_time_days =
-        result.time_series.at("model_time_days");
-    const auto& surface_elevation =
-        result.time_series.at("surface_elevation");
-    const auto& peak_biomass =
-        result.time_series.at("peak_biomass");
-    const auto& aboveground_biomass =
-        result.time_series.at("aboveground_biomass");
-    const auto& belowground_biomass =
-        result.time_series.at("belowground_biomass");
-    const auto& belowground_mortality =
-        result.time_series.at("belowground_mortality");
-
-    for (std::size_t i = 0; i < model_time_days.size(); ++i)
+    if (model_time_it != result.time_series.end() &&
+        surface_it != result.time_series.end() &&
+        peak_it != result.time_series.end() &&
+        ag_it != result.time_series.end() &&
+        bg_it != result.time_series.end() &&
+        mortality_it != result.time_series.end() &&
+        n_layers_it != result.time_series.end())
     {
-        std::cout << "  step " << i
-                  << " time_days=" << model_time_days[i]
-                  << " surface_elevation=" << surface_elevation[i]
-                  << " peak_biomass=" << peak_biomass[i]
-                  << " aboveground_biomass=" << aboveground_biomass[i]
-                  << " belowground_biomass=" << belowground_biomass[i]
-                  << " belowground_mortality=" << belowground_mortality[i]
-                  << "\n";
+        std::cout << "\n";
+        std::cout << "time series:\n";
+
+        for (std::size_t i = 0; i < model_time_it->second.size(); ++i)
+        {
+            std::cout << "  step " << i
+                      << " time_days=" << model_time_it->second[i]
+                      << " surface_elevation=" << surface_it->second[i]
+                      << " n_layers=" << n_layers_it->second[i]
+                      << " peak_biomass=" << peak_it->second[i]
+                      << " aboveground_biomass=" << ag_it->second[i]
+                      << " belowground_biomass=" << bg_it->second[i]
+                      << " belowground_mortality=" << mortality_it->second[i]
+                      << "\n";
+        }
+    }
+
+    if (!result.column_snapshots.empty())
+    {
+        std::cout << "\n";
+        std::cout << "saved column snapshot times:\n";
+
+        for (const auto& snapshot : result.column_snapshots)
+        {
+            std::cout << "  time_days=" << snapshot.model_time_days
+                      << " n_layers=" << snapshot.state.n_layers()
+                      << "\n";
+        }
     }
 }
 
@@ -148,9 +181,22 @@ void run_from_yaml(const std::string& config_file)
             loaded.materials,
             loaded.parameters,
             loaded.forcing,
-            loaded.initial_state);
+            loaded.initial_state,
+            loaded.output);
 
     print_run_summary(loaded, result);
+
+    if (!loaded.output.file.empty() &&
+        (loaded.output.write_time_series || loaded.output.write_column_snapshots))
+    {
+        result_io::write_netcdf(
+            loaded.output.file,
+            result,
+            loaded.materials);
+
+        std::cout << "\n";
+        std::cout << "wrote NetCDF output: " << loaded.output.file << "\n";
+    }
 }
 }
 
