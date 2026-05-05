@@ -26,6 +26,8 @@
 #include "marsh_model/processes/two_stage_compaction_model.hpp"
 #include "marsh_model/processes/zero_deposition_model.hpp"
 #include "marsh_model/processes/edge_distance_deposition_model.hpp"
+#include "marsh_model/processes/marsh_decay_model.hpp"
+
 
 
 #include <stdexcept>
@@ -92,6 +94,12 @@ std::shared_ptr<decay_model> process_factory::create_decay_model(
     {
         return std::make_shared<identity_decay_model>();
     }
+
+    if (name == "marsh_decay")
+    {
+        return std::make_shared<marsh_decay_model>();
+    }
+
 
     if (name == "first_order_decay")
     {

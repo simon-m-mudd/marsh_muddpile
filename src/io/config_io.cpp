@@ -255,6 +255,29 @@ forcing_series parse_forcing_steps(const YAML::Node& steps_node)
         step.temperature =
             get_optional_scalar<double>(step_node, "temperature", 20.0);
 
+        step.precipitation_mm_d =
+            get_optional_scalar<double>(step_node, "precipitation_mm_d", 0.0);
+
+        step.par_umol_m2_d =
+            get_optional_scalar<double>(step_node, "par_umol_m2_d", 0.0);
+
+        step.creek_salinity_ppt =
+            get_optional_scalar<double>(step_node, "creek_salinity_ppt", 0.0);
+
+        step.freshwater_input_mm_d =
+            get_optional_scalar<double>(step_node, "freshwater_input_mm_d", 0.0);
+
+        if (step_node["observed_water_level_m"])
+        {
+            step.observed_water_level_m =
+                step_node["observed_water_level_m"].as<double>();
+            step.has_observed_water_level = true;
+        }
+
+        step.storm_surge_residual_m =
+            get_optional_scalar<double>(step_node, "storm_surge_residual_m", 0.0);
+
+
         step.suspended_sediment_concentration =
             get_optional_scalar<double>(step_node, "suspended_sediment_concentration", 0.0);
 

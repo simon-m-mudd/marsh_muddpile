@@ -5,10 +5,10 @@
 
 namespace marsh_model
 {
-class first_order_decay_model : public decay_model
+class marsh_decay_model : public decay_model
 {
 public:
-    first_order_decay_model() = default;
+    marsh_decay_model() = default;
 
     void apply_decay(
         column_state& state,

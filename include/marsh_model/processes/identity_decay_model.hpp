@@ -11,6 +11,7 @@ public:
         column_state& state,
         const forcing_step& forcing,
         const material_catalog& catalog,
-        const parameter_set& parameters) const override;
+        const parameter_set& parameters,
+        const decay_context& context) const override;
 };
 }

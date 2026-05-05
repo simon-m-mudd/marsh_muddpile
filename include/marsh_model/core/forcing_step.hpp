@@ -13,6 +13,17 @@ struct forcing_step
     double tidal_period_hours = 0.0;
 
     double temperature = 0.0;
+
+    double precipitation_mm_d = 0.0;
+    double par_umol_m2_d = 0.0;
+
+    double creek_salinity_ppt = 0.0;
+    double freshwater_input_mm_d = 0.0;
+
+    double observed_water_level_m = 0.0;
+    bool has_observed_water_level = false;
+    double storm_surge_residual_m = 0.0;
+
     double suspended_sediment_concentration = 0.0;
     double fine_sediment_concentration = 0.0;
 

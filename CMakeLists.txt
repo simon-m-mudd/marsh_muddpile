@@ -136,6 +136,7 @@ add_library(marsh_model_lib
     src/engine/simulator.cpp
     src/engine/process_factory.cpp
     src/engine/layer_merger.cpp
+    src/engine/surface_property_summarizer.cpp
 
     src/io/config_io.cpp
     src/io/result_io.cpp
@@ -146,12 +147,21 @@ add_library(marsh_model_lib
     src/processes/identity_decay_model.cpp
     src/processes/identity_compaction_model.cpp
 
+    src/processes/simple_canopy_et_model.cpp
+    src/processes/marsh_gpp_biomass_model.cpp
+    src/processes/hydro_salinity_decomposition_modifier_model.cpp
+
     src/processes/two_stage_compaction_model.cpp
     src/processes/first_order_decay_model.cpp
+    src/processes/marsh_decay_model.cpp
     src/processes/exponential_root_allocation_model.cpp
     src/processes/seasonal_biomass_model.cpp
     src/processes/tke_deposition_model.cpp
     src/processes/edge_distance_deposition_model.cpp
+
+    src/processes/distance_flushing_salinity_model.cpp
+    src/processes/composite_water_level_model.cpp
+
 )
 
 target_include_directories(marsh_model_lib

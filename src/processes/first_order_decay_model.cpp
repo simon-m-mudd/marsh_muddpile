@@ -63,7 +63,8 @@ void first_order_decay_model::apply_decay(
     column_state& state,
     const forcing_step& forcing,
     const material_catalog& catalog,
-    const parameter_set& parameters) const
+    const parameter_set& parameters,
+    const decay_context&) const
 {
     const int n_layers = state.n_layers();
     const int n_materials = state.n_materials();
