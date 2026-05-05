@@ -7,8 +7,23 @@
 // split between aboveground shoots and belowground roots depending on stress
 // conditions, with logistic capacity limits on each pool. Separate mortality rates
 // handle aboveground seasonal senescence (with a cosine annual cycle) and
-// belowground root turnover. The ecohydrology state — biomass pools, litter, and
-// LAI — is updated in-place each time step.
+// belowground root turnover. The ecohydrology state - biomass pools, litter, and
+// LAI - is updated in-place each time step.
+//
+// References:
+//   Monteith, J.L., 1972. Solar radiation and productivity in tropical
+//     ecosystems. Journal of Applied Ecology 9, 747-766.
+//     https://doi.org/10.2307/2401901
+//
+//   Oikawa, P.Y., Jenerette, G.D., Knox, S.H., Sturtevant, C., Verfaillie, J.,
+//     Dronova, I., Poindexter, C.M., Eichelmann, E., Baldocchi, D.D., 2017.
+//     Evaluation of a hierarchy of models reveals importance of substrate
+//     limitation for predicting carbon dioxide and methane exchange in restored
+//     wetlands. Journal of Geophysical Research: Biogeosciences 122, 145-167.
+//     https://doi.org/10.1002/2016JG003438
+//
+//   Oikawa, P.Y. et al., PEPRMT-Tidal v1.0 (tidal wetland extension of PEPRMT).
+//     https://github.com/pattyoikawa/PEPRMT-Tidal/tree/v1.0
 
 #include "marsh_model/processes/marsh_gpp_biomass_model.hpp"
 
@@ -435,10 +450,10 @@ double marsh_gpp_biomass_model::compute_lai_from_aboveground_biomass(
 }
 
 // Aboveground mortality rate (d^-1) composed of three additive terms:
-//   baseline rate  — background senescence throughout the year
-//   seasonal term  — cosine cycle peaking around the specified mortality peak day
+//   baseline rate  - background senescence throughout the year
+//   seasonal term  - cosine cycle peaking around the specified mortality peak day
 //                    (typically autumn / early winter for temperate species)
-//   stress terms   — excess mortality when inundation or salinity exceeds thresholds
+//   stress terms   - excess mortality when inundation or salinity exceeds thresholds
 double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
     const ecohydrology_state& eco_state,
     const hydrology_diagnostics& hydro,
@@ -529,7 +544,7 @@ double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
 
 // Belowground mortality rate (d^-1): a baseline root-turnover rate plus linear
 // penalty terms for inundation and salinity above their respective thresholds.
-// No seasonal cycle — root turnover is treated as approximately year-round.
+// No seasonal cycle - root turnover is treated as approximately year-round.
 double marsh_gpp_biomass_model::compute_belowground_mortality_rate_per_day(
     const ecohydrology_state& eco_state,
     const hydrology_diagnostics& hydro,

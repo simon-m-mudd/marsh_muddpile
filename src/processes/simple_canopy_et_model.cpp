@@ -9,6 +9,17 @@
 // reduced by salinity and inundation stress. Evaporation is scaled by the
 // exposed surface fraction and a soil-texture modifier that accounts for fine
 // and coarse fractions, organic content, and porosity.
+//
+// References:
+//   Allen, R.G., Pereira, L.S., Raes, D., Smith, M., 1998. Crop
+//     evapotranspiration: guidelines for computing crop water requirements.
+//     FAO Irrigation and Drainage Paper 56. FAO, Rome.
+//     https://www.fao.org/3/x0490e/x0490e00.htm
+//
+//   Monsi, M., Saeki, T., 1953. Uber den Lichtfaktor in den Pflanzengesellschaften
+//     und seine Bedeutung fur die Stoffproduktion. Japanese Journal of Botany 14,
+//     22-52. (English translation: Annals of Botany 95, 549-567, 2005.
+//     https://doi.org/10.1093/aob/mci052)
 
 #include "marsh_model/processes/simple_canopy_et_model.hpp"
 
@@ -244,7 +255,7 @@ double simple_canopy_et_model::compute_effective_lai(
 
 // Empirical potential ET (mm d^-1) as a linear combination of a background
 // rate, a temperature-driven term (above a base temperature), and a PAR-driven
-// term. This is intentionally simple — no Penman-Monteith aerodynamic terms.
+// term. This is intentionally simple - no Penman-Monteith aerodynamic terms.
 double simple_canopy_et_model::compute_potential_et_mm_d(
     const forcing_step& forcing,
     const parameter_set& parameters) const

@@ -101,6 +101,10 @@ simulation_result simulator::run_forward(
     auto& below_bio_kg_ts = result.time_series["belowground_biomass_kg_m2"];
     auto& gpp_ts = result.time_series["gpp_gC_m2_d"];
     auto& npp_ts = result.time_series["npp_gC_m2_d"];
+    auto& aboveground_growth_ts = result.time_series["aboveground_growth_kg_m2_d"];
+    auto& aboveground_mortality_ts = result.time_series["aboveground_mortality_kg_m2_d"];
+    auto& belowground_growth_ts = result.time_series["belowground_growth_kg_m2_d"];
+    auto& belowground_mortality_kg_ts = result.time_series["belowground_mortality_kg_m2_d"];
     auto& et_total_ts = result.time_series["et_total_mm_d"];
     auto& et_transpiration_ts = result.time_series["et_transpiration_mm_d"];
     auto& et_evaporation_ts = result.time_series["et_evaporation_mm_d"];
@@ -122,6 +126,10 @@ simulation_result simulator::run_forward(
     below_bio_kg_ts.reserve(n_steps);
     gpp_ts.reserve(n_steps);
     npp_ts.reserve(n_steps);
+    aboveground_growth_ts.reserve(n_steps);
+    aboveground_mortality_ts.reserve(n_steps);
+    belowground_growth_ts.reserve(n_steps);
+    belowground_mortality_kg_ts.reserve(n_steps);
     et_total_ts.reserve(n_steps);
     et_transpiration_ts.reserve(n_steps);
     et_evaporation_ts.reserve(n_steps);
@@ -264,6 +272,10 @@ simulation_result simulator::run_forward(
 
         gpp_ts.push_back(vegetation_diag.gpp_gC_m2_d);
         npp_ts.push_back(vegetation_diag.npp_gC_m2_d);
+        aboveground_growth_ts.push_back(vegetation_diag.aboveground_growth_kg_m2_d);
+        aboveground_mortality_ts.push_back(vegetation_diag.aboveground_mortality_kg_m2_d);
+        belowground_growth_ts.push_back(vegetation_diag.belowground_growth_kg_m2_d);
+        belowground_mortality_kg_ts.push_back(vegetation_diag.belowground_mortality_kg_m2_d);
 
         et_total_ts.push_back(et.total_et_mm_d);
         et_transpiration_ts.push_back(et.transpiration_mm_d);

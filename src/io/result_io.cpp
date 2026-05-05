@@ -190,6 +190,10 @@ void result_io::write_netcdf(
             write_scalar_time_series("belowground_biomass_kg_m2", "kg m-2");
             write_scalar_time_series("gpp_gC_m2_d", "gC m-2 d-1");
             write_scalar_time_series("npp_gC_m2_d", "gC m-2 d-1");
+            write_scalar_time_series("aboveground_growth_kg_m2_d", "kg m-2 d-1");
+            write_scalar_time_series("aboveground_mortality_kg_m2_d", "kg m-2 d-1");
+            write_scalar_time_series("belowground_growth_kg_m2_d", "kg m-2 d-1");
+            write_scalar_time_series("belowground_mortality_kg_m2_d", "kg m-2 d-1");
             write_scalar_time_series("et_total_mm_d", "mm d-1");
             write_scalar_time_series("et_transpiration_mm_d", "mm d-1");
             write_scalar_time_series("et_evaporation_mm_d", "mm d-1");

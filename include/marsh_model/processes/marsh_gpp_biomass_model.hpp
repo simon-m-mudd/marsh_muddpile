@@ -11,6 +11,21 @@
 // capacity limits on each pool. Separate mortality rates (with a seasonal
 // cycle for aboveground tissue) are applied and the ecohydrology state is
 // updated in-place.
+//
+// References:
+//   Monteith, J.L., 1972. Solar radiation and productivity in tropical
+//     ecosystems. Journal of Applied Ecology 9, 747-766.
+//     https://doi.org/10.2307/2401901
+//
+//   Oikawa, P.Y., Jenerette, G.D., Knox, S.H., Sturtevant, C., Verfaillie, J.,
+//     Dronova, I., Poindexter, C.M., Eichelmann, E., Baldocchi, D.D., 2017.
+//     Evaluation of a hierarchy of models reveals importance of substrate
+//     limitation for predicting carbon dioxide and methane exchange in restored
+//     wetlands. Journal of Geophysical Research: Biogeosciences 122, 145-167.
+//     https://doi.org/10.1002/2016JG003438
+//
+//   Oikawa, P.Y. et al., PEPRMT-Tidal v1.0 (tidal wetland extension of PEPRMT).
+//     https://github.com/pattyoikawa/PEPRMT-Tidal/tree/v1.0
 
 #include "marsh_model/core/ecohydrology_state.hpp"
 #include "marsh_model/core/forcing_step.hpp"
