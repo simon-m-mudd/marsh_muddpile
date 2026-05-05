@@ -136,7 +136,7 @@ add_library(marsh_model_lib
     src/engine/simulator.cpp
     src/engine/process_factory.cpp
     src/engine/layer_merger.cpp
-    src/engine/surface_property_summarizer.cpp
+    src/engine/surface_property_summariser.cpp
 
     src/io/config_io.cpp
     src/io/result_io.cpp

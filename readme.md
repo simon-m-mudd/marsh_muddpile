@@ -152,7 +152,7 @@ During configuration, CMake should report whether it found:
 
 ## Basic usage
 
-The model is currently run from the command line using a YAML configuration file.
+The model is run from the command line with a YAML configuration file.
 
 From the build directory:
 
@@ -166,29 +166,43 @@ Or with another config file:
 ./marsh_cli ../path/to/your_run.yaml
 ```
 
-If no filename is supplied, the CLI currently defaults to:
+If no filename is supplied, the CLI defaults to `example_run.yaml`.
 
-```text
-example_run.yaml
+## CLI options
+
+| Option | Description |
+|--------|-------------|
+| `<config.yaml>` | Path to the YAML run configuration (default: `example_run.yaml`) |
+| `--silent` | Suppress all stdout output; errors still go to stderr |
+
+The `--silent` flag can appear before or after the config file:
+
+```bash
+./marsh_cli ../example_run.yaml --silent
+./marsh_cli --silent ../example_run.yaml
 ```
 
-## What the CLI does
+## What the CLI prints
 
-The CLI currently:
+On a normal run the CLI prints:
 
-1. loads the YAML configuration
-2. builds the selected process modules
-3. runs the forward model
-4. prints diagnostics to screen
+1. the config file being loaded
+2. the total model duration (years and days)
+3. a progress line every ~3 months of model time, showing current and total time in years
+4. the path of the written NetCDF output file
 
-These diagnostics include:
+Example output:
 
-- selected process models
-- number of layers
-- final surface elevation
-- top-layer thickness and porosity
-- total mass by material
-- a timestep-by-timestep summary of biomass and elevation
+```text
+loading config: ../example_runs/run_edge_distance_50yr.yaml
+total run duration: 50.0 yr (18262.5 days)
+  0.25 yr / 50.0 yr
+  0.50 yr / 50.0 yr
+  ...
+wrote netcdf output: results/run_edge_distance_50yr.nc
+```
+
+Use `--silent` to suppress all of the above (useful when running ensembles or calling from scripts).
 
 ---
 
@@ -438,15 +452,11 @@ cmake --build . -j
 ./marsh_cli ../example_runs/run_edge_distance_50yr.yaml
 ```
 
-## 3. Inspect screen output
+## 3. Check screen output
 
-Check:
-
-- number of layers
-- final surface elevation
-- top-layer thickness and porosity
-- total mass by material
-- time series of biomass and surface elevation
+The CLI prints the total run duration, then a progress line every ~3 months of
+model time, and finally the path of the written NetCDF output file.
+All results (time series, final state, material totals) are in the NetCDF file.
 
 ---
 

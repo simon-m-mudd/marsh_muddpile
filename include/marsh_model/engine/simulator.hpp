@@ -35,6 +35,7 @@
 #include "marsh_model/processes/vegetation_model.hpp"
 #include "marsh_model/processes/water_level_model.hpp"
 
+#include <functional>
 #include <memory>
 
 namespace marsh_model
@@ -52,6 +53,8 @@ public:
         std::shared_ptr<decay_model> decay,
         std::shared_ptr<compaction_model> compaction);
 
+    // progress_cb is called periodically with (current_time_days, total_time_days).
+    // Pass nullptr for no progress reporting.
     simulation_result run_forward(
         const simulation_config& config,
         const material_catalog& catalog,
@@ -59,7 +62,8 @@ public:
         const forcing_series& forcing,
         const site_properties& site,
         column_state initial_state,
-        ecohydrology_state initial_ecohydrology_state) const;
+        ecohydrology_state initial_ecohydrology_state,
+        std::function<void(double, double)> progress_cb = nullptr) const;
 
 private:
     std::shared_ptr<water_level_model> water_level_;

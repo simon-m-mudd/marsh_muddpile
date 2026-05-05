@@ -1,3 +1,15 @@
+// marsh_gpp_biomass_model.cpp
+//
+// Light-use efficiency (LUE) vegetation model for tidal marsh plants.
+//
+// GPP is driven by absorbed PAR (via Beer-Lambert canopy interception) multiplied
+// by stress scalars for temperature, hydroperiod, and root-zone salinity. NPP is
+// split between aboveground shoots and belowground roots depending on stress
+// conditions, with logistic capacity limits on each pool. Separate mortality rates
+// handle aboveground seasonal senescence (with a cosine annual cycle) and
+// belowground root turnover. The ecohydrology state — biomass pools, litter, and
+// LAI — is updated in-place each time step.
+
 #include "marsh_model/processes/marsh_gpp_biomass_model.hpp"
 
 #include <algorithm>
@@ -27,6 +39,10 @@ double clamp(double value, double lower, double upper)
 }
 }
 
+// Advances vegetation one time step. Computes GPP from LUE * APAR * stress terms,
+// derives NPP via carbon-use efficiency, partitions NPP to shoots and roots with
+// capacity modifiers, applies mortality to both pools, accumulates litter, and
+// updates LAI. Returns per-day flux diagnostics for the current step.
 vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
     ecohydrology_state& eco_state,
     const hydrology_diagnostics& hydro,
@@ -206,6 +222,8 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
     return diagnostics;
 }
 
+// Maps absolute model time onto a repeating annual cycle [0, days_per_year).
+// Used to position the seasonal mortality peak relative to the current date.
 double marsh_gpp_biomass_model::compute_day_of_year_days(
     const forcing_step& forcing,
     const parameter_set& parameters) const
@@ -229,6 +247,8 @@ double marsh_gpp_biomass_model::compute_day_of_year_days(
     return day_of_year;
 }
 
+// Returns the LAI stored in eco_state if it has been set (> 0); otherwise
+// bootstraps an estimate from aboveground biomass for the first step.
 double marsh_gpp_biomass_model::compute_effective_lai(
     const ecohydrology_state& eco_state,
     const parameter_set& parameters) const
@@ -243,6 +263,8 @@ double marsh_gpp_biomass_model::compute_effective_lai(
         parameters);
 }
 
+// Fraction of incoming PAR absorbed by the canopy using Beer-Lambert extinction.
+// FPAR = max_fpar * (1 - exp(-k * LAI)), capped at max_fpar.
 double marsh_gpp_biomass_model::compute_fpar(
     double lai,
     const parameter_set& parameters) const
@@ -267,6 +289,8 @@ double marsh_gpp_biomass_model::compute_fpar(
     return max_fpar * (1.0 - std::exp(-light_extinction * std::max(0.0, lai)));
 }
 
+// Gaussian response centred on the optimum temperature. Returns 1 at the
+// optimum and declines symmetrically above and below it.
 double marsh_gpp_biomass_model::compute_temperature_modifier(
     const forcing_step& forcing,
     const parameter_set& parameters) const
@@ -292,6 +316,8 @@ double marsh_gpp_biomass_model::compute_temperature_modifier(
     return std::exp(-0.5 * normalized * normalized);
 }
 
+// Gaussian stress factor centred on the optimum inundation fraction. Productivity
+// peaks at moderate flooding; both too-dry and too-wet conditions reduce GPP.
 double marsh_gpp_biomass_model::compute_hydroperiod_stress(
     const hydrology_diagnostics& hydro,
     const parameter_set& parameters) const
@@ -319,6 +345,8 @@ double marsh_gpp_biomass_model::compute_hydroperiod_stress(
     return std::exp(-0.5 * normalized * normalized);
 }
 
+// Exponential GPP reduction for root-zone salinity above a threshold.
+// Represents osmotic and ionic stress limiting carbon assimilation.
 double marsh_gpp_biomass_model::compute_salinity_stress(
     const ecohydrology_state& eco_state,
     const parameter_set& parameters) const
@@ -345,6 +373,8 @@ double marsh_gpp_biomass_model::compute_salinity_stress(
     return std::exp(-salinity_stress_per_ppt * salinity_excess_ppt);
 }
 
+// NPP fraction directed to shoots. Under low combined stress more carbon goes
+// aboveground; under high stress allocation shifts toward roots.
 double marsh_gpp_biomass_model::compute_shoot_allocation_fraction(
     double hydroperiod_stress,
     double salinity_stress,
@@ -376,6 +406,8 @@ double marsh_gpp_biomass_model::compute_shoot_allocation_fraction(
         (shoot_allocation_max - shoot_allocation_min) * stress_index;
 }
 
+// Converts aboveground biomass to LAI with a fixed specific leaf area coefficient,
+// capped at a maximum LAI to prevent unbounded canopy growth.
 double marsh_gpp_biomass_model::compute_lai_from_aboveground_biomass(
     double aboveground_biomass_kg_m2,
     const parameter_set& parameters) const
@@ -402,6 +434,11 @@ double marsh_gpp_biomass_model::compute_lai_from_aboveground_biomass(
     return std::min(raw_lai, max_lai);
 }
 
+// Aboveground mortality rate (d^-1) composed of three additive terms:
+//   baseline rate  — background senescence throughout the year
+//   seasonal term  — cosine cycle peaking around the specified mortality peak day
+//                    (typically autumn / early winter for temperate species)
+//   stress terms   — excess mortality when inundation or salinity exceeds thresholds
 double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
     const ecohydrology_state& eco_state,
     const hydrology_diagnostics& hydro,
@@ -490,6 +527,9 @@ double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
         salinity_slope * salinity_excess;
 }
 
+// Belowground mortality rate (d^-1): a baseline root-turnover rate plus linear
+// penalty terms for inundation and salinity above their respective thresholds.
+// No seasonal cycle — root turnover is treated as approximately year-round.
 double marsh_gpp_biomass_model::compute_belowground_mortality_rate_per_day(
     const ecohydrology_state& eco_state,
     const hydrology_diagnostics& hydro,

@@ -1,4 +1,4 @@
-#include "marsh_model/engine/surface_property_summarizer.hpp"
+#include "marsh_model/engine/surface_property_summariser.hpp"
 
 #include "marsh_model/core/material_properties.hpp"
 
@@ -35,7 +35,7 @@ bool is_mineral_material(const material_properties& material)
 }
 }
 
-sediment_surface_properties surface_property_summarizer::summarize(
+sediment_surface_properties surface_property_summariser::summarize(
     const column_state& state,
     const material_catalog& catalog,
     const parameter_set& parameters)
@@ -139,7 +139,7 @@ sediment_surface_properties surface_property_summarizer::summarize(
             if (material.density <= 0.0)
             {
                 throw std::runtime_error(
-                    "surface_property_summarizer requires positive material density");
+                    "surface_property_summariser requires positive material density");
             }
 
             total_solid_mass_kg_m2 += mass_kg_m2;

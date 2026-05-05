@@ -25,8 +25,9 @@
 #include "marsh_model/engine/simulator.hpp"
 
 #include "marsh_model/engine/layer_merger.hpp"
-#include "marsh_model/engine/surface_property_summarizer.hpp"
+#include "marsh_model/engine/surface_property_summariser.hpp"
 
+#include <functional>
 #include <stdexcept>
 #include <utility>
 
@@ -71,7 +72,8 @@ simulation_result simulator::run_forward(
     const forcing_series& forcing,
     const site_properties& site,
     column_state initial_state,
-    ecohydrology_state initial_ecohydrology_state) const
+    ecohydrology_state initial_ecohydrology_state,
+    std::function<void(double, double)> progress_cb) const
 {
     column_state state = std::move(initial_state);
     ecohydrology_state eco_state = std::move(initial_ecohydrology_state);
@@ -79,6 +81,10 @@ simulation_result simulator::run_forward(
     simulation_result result;
 
     const int n_steps = forcing.size();
+    const double total_time_days =
+        (n_steps > 0) ? forcing.at(n_steps - 1).model_time_days : 0.0;
+    constexpr double progress_interval_days = 91.25;  // ~3 months
+    double next_progress_days = progress_interval_days;
 
     // legacy / existing diagnostics kept for CLI compatibility
     auto& model_time_days_ts = result.time_series["model_time_days"];
@@ -134,7 +140,7 @@ simulation_result simulator::run_forward(
         }
 
         const sediment_surface_properties surface =
-            surface_property_summarizer::summarize(
+            surface_property_summariser::summarize(
                 state,
                 catalog,
                 parameters);
@@ -267,6 +273,12 @@ simulation_result simulator::run_forward(
         inundation_depth_ts.push_back(hydro.mean_inundation_depth_m);
         mean_water_level_ts.push_back(hydro.mean_water_level_m);
         max_water_level_ts.push_back(hydro.max_water_level_m);
+
+        if (progress_cb && step.model_time_days >= next_progress_days)
+        {
+            progress_cb(step.model_time_days, total_time_days);
+            next_progress_days += progress_interval_days;
+        }
     }
 
     result.final_state = std::move(state);

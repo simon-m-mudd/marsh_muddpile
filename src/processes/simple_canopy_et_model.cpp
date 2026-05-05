@@ -1,3 +1,15 @@
+// simple_canopy_et_model.cpp
+//
+// Canopy-based evapotranspiration model that partitions potential ET into
+// transpiration and soil evaporation components.
+//
+// Potential ET is a simple empirical function of air temperature and incoming
+// PAR. The canopy cover fraction (derived from LAI via Beer-Lambert extinction)
+// drives the split between transpiration and evaporation. Transpiration is then
+// reduced by salinity and inundation stress. Evaporation is scaled by the
+// exposed surface fraction and a soil-texture modifier that accounts for fine
+// and coarse fractions, organic content, and porosity.
+
 #include "marsh_model/processes/simple_canopy_et_model.hpp"
 
 #include <algorithm>
@@ -27,6 +39,11 @@ double clamp(double value, double lower, double upper)
 }
 }
 
+// Computes transpiration and evaporation fluxes for one time step.
+// 1. Potential ET is computed from temperature and PAR.
+// 2. Canopy cover (from LAI) sets the transpiration/evaporation split.
+// 3. Transpiration is multiplied by a combined salinity-and-inundation stress.
+// 4. Evaporation is scaled by exposed surface fraction and a soil-texture modifier.
 et_fluxes simple_canopy_et_model::compute_et(
     const ecohydrology_state& eco_state,
     const hydrology_diagnostics& hydro,
@@ -203,6 +220,8 @@ et_fluxes simple_canopy_et_model::compute_et(
     return fluxes;
 }
 
+// Returns the LAI stored in eco_state if it has been set (> 0); otherwise
+// estimates it from aboveground biomass using a fixed coefficient.
 double simple_canopy_et_model::compute_effective_lai(
     const ecohydrology_state& eco_state,
     const parameter_set& parameters) const
@@ -223,6 +242,9 @@ double simple_canopy_et_model::compute_effective_lai(
         biomass_to_lai_coefficient * eco_state.aboveground_biomass_kg_m2);
 }
 
+// Empirical potential ET (mm d^-1) as a linear combination of a background
+// rate, a temperature-driven term (above a base temperature), and a PAR-driven
+// term. This is intentionally simple — no Penman-Monteith aerodynamic terms.
 double simple_canopy_et_model::compute_potential_et_mm_d(
     const forcing_step& forcing,
     const parameter_set& parameters) const

@@ -184,6 +184,21 @@ void result_io::write_netcdf(
             write_scalar_time_series("belowground_biomass", "kg m-2");
             write_scalar_time_series("belowground_mortality", "kg m-2");
             write_scalar_time_series("n_layers", "count");
+            write_scalar_time_series("root_zone_salinity_ppt", "ppt");
+            write_scalar_time_series("lai", "1");
+            write_scalar_time_series("aboveground_biomass_kg_m2", "kg m-2");
+            write_scalar_time_series("belowground_biomass_kg_m2", "kg m-2");
+            write_scalar_time_series("gpp_gC_m2_d", "gC m-2 d-1");
+            write_scalar_time_series("npp_gC_m2_d", "gC m-2 d-1");
+            write_scalar_time_series("et_total_mm_d", "mm d-1");
+            write_scalar_time_series("et_transpiration_mm_d", "mm d-1");
+            write_scalar_time_series("et_evaporation_mm_d", "mm d-1");
+            write_scalar_time_series("inundation_fraction", "1");
+            write_scalar_time_series("mean_inundation_depth_m", "m");
+            write_scalar_time_series("mean_water_level_m", "m");
+            write_scalar_time_series("max_water_level_m", "m");
+
+
 
             if (!result.total_mass_by_material_time_series.empty())
             {

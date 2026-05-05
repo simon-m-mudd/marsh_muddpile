@@ -1,5 +1,16 @@
 #pragma once
 
+// simple_canopy_et_model.hpp
+//
+// Canopy-based evapotranspiration model that splits potential ET into
+// transpiration and soil evaporation.
+//
+// Potential ET is estimated empirically from air temperature and PAR.
+// Transpiration is scaled by LAI-driven canopy cover and reduced by salinity
+// and inundation stress. Soil evaporation is scaled by the exposed (non-inundated)
+// surface fraction and modified by surface texture (fine fraction, organic content,
+// porosity, and coarse fraction).
+
 #include "marsh_model/core/ecohydrology_state.hpp"
 #include "marsh_model/core/et_fluxes.hpp"
 #include "marsh_model/core/forcing_step.hpp"
@@ -14,6 +25,8 @@ namespace marsh_model
 class simple_canopy_et_model : public evapotranspiration_model
 {
 public:
+    // Computes transpiration and evaporation for the time step, returning both
+    // components and the total in et_fluxes (mm d^-1).
     et_fluxes compute_et(
         const ecohydrology_state& eco_state,
         const hydrology_diagnostics& hydro,
@@ -23,10 +36,12 @@ public:
         const parameter_set& parameters) const override;
 
 private:
+    // Returns LAI from state if available; otherwise estimates from biomass.
     double compute_effective_lai(
         const ecohydrology_state& eco_state,
         const parameter_set& parameters) const;
 
+    // Empirical potential ET (mm d^-1) from temperature and PAR inputs.
     double compute_potential_et_mm_d(
         const forcing_step& forcing,
         const parameter_set& parameters) const;

@@ -1,6 +1,6 @@
 #include "marsh_model/processes/marsh_decay_model.hpp"
 
-#include "marsh_model/engine/surface_property_summarizer.hpp"
+#include "marsh_model/engine/surface_property_summariser.hpp"
 #include "marsh_model/processes/hydro_salinity_decomposition_modifier_model.hpp"
 
 #include <algorithm>
@@ -187,7 +187,7 @@ void marsh_decay_model::apply_decay(
     sediment_surface_properties fallback_surface =
         context.surface
             ? *context.surface
-            : surface_property_summarizer::summarize(
+            : surface_property_summariser::summarize(
                   state,
                   catalog,
                   parameters);

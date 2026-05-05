@@ -27,6 +27,8 @@
 #include "marsh_model/core/parameter_set.hpp"
 #include "marsh_model/core/simulation_config.hpp"
 #include "marsh_model/core/site_properties.hpp"
+#include "marsh_model/core/output_config.hpp"
+
 
 #include <string>
 
@@ -42,7 +44,9 @@ struct loaded_run_config
     column_state initial_state;
     ecohydrology_state initial_ecohydrology_state;
     site_properties site;
+    output_config output;
 };
+
 
 class config_io
 {
