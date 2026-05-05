@@ -20,13 +20,13 @@
 //   - output and snapshot settings
 //
 // -----------------------------------------------------------------------------
-
 #include "marsh_model/core/column_state.hpp"
+#include "marsh_model/core/ecohydrology_state.hpp"
 #include "marsh_model/core/forcing_series.hpp"
 #include "marsh_model/core/material_catalog.hpp"
-#include "marsh_model/core/output_config.hpp"
 #include "marsh_model/core/parameter_set.hpp"
 #include "marsh_model/core/simulation_config.hpp"
+#include "marsh_model/core/site_properties.hpp"
 
 #include <string>
 
@@ -38,8 +38,10 @@ struct loaded_run_config
     parameter_set parameters;
     material_catalog materials;
     forcing_series forcing;
+
     column_state initial_state;
-    output_config output;
+    ecohydrology_state initial_ecohydrology_state;
+    site_properties site;
 };
 
 class config_io

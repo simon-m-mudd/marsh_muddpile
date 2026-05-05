@@ -21,6 +21,10 @@
 #include "marsh_model/processes/decay_model.hpp"
 #include "marsh_model/processes/deposition_model.hpp"
 #include "marsh_model/processes/root_allocation_model.hpp"
+#include "marsh_model/processes/evapotranspiration_model.hpp"
+#include "marsh_model/processes/salinity_model.hpp"
+#include "marsh_model/processes/vegetation_model.hpp"
+#include "marsh_model/processes/water_level_model.hpp"
 
 #include <memory>
 #include <string>
@@ -44,5 +48,18 @@ public:
 
     static std::shared_ptr<compaction_model> create_compaction_model(
         const std::string& name);
+
+    static std::shared_ptr<water_level_model> create_water_level_model(
+        const std::string& name);
+
+    static std::shared_ptr<salinity_model> create_salinity_model(
+        const std::string& name);
+
+    static std::shared_ptr<evapotranspiration_model> create_evapotranspiration_model(
+        const std::string& name);
+
+    static std::shared_ptr<vegetation_model> create_vegetation_model(
+        const std::string& name);
+
 };
 }

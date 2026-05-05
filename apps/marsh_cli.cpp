@@ -10,8 +10,7 @@
 // this application is the command-line interface for marsh_muddpile.
 //
 // it loads a yaml run configuration, constructs the requested process modules,
-// runs the forward model, writes requested outputs, and prints a summary of
-// model diagnostics.
+// runs the forward model, and prints a summary of model diagnostics.
 //
 // -----------------------------------------------------------------------------
 
@@ -19,7 +18,6 @@
 #include "marsh_model/engine/process_factory.hpp"
 #include "marsh_model/engine/simulator.hpp"
 #include "marsh_model/io/config_io.hpp"
-#include "marsh_model/io/result_io.hpp"
 
 #include <Eigen/Core>
 #include <iostream>
@@ -37,27 +35,23 @@ void print_run_summary(
     std::cout << "\n";
     std::cout << "run complete\n";
     std::cout << "selected models:\n";
+    std::cout << "  water level: " << loaded.simulation.water_level_model_name << "\n";
+    std::cout << "  evapotranspiration: " << loaded.simulation.evapotranspiration_model_name << "\n";
+    std::cout << "  salinity: " << loaded.simulation.salinity_model_name << "\n";
+    std::cout << "  vegetation: " << loaded.simulation.vegetation_model_name << "\n";
     std::cout << "  deposition: " << loaded.simulation.deposition_model_name << "\n";
-    std::cout << "  biomass: " << loaded.simulation.biomass_model_name << "\n";
     std::cout << "  root allocation: " << loaded.simulation.root_allocation_model_name << "\n";
     std::cout << "  decay: " << loaded.simulation.decay_model_name << "\n";
     std::cout << "  compaction: " << loaded.simulation.compaction_model_name << "\n";
 
     std::cout << "\n";
-    std::cout << "output summary:\n";
-    std::cout << "  output file: " << loaded.output.file << "\n";
-    std::cout << "  write time series: " << (loaded.output.write_time_series ? "true" : "false") << "\n";
-    std::cout << "  write column snapshots: " << (loaded.output.write_column_snapshots ? "true" : "false") << "\n";
-    std::cout << "  saved snapshots: " << result.column_snapshots.size() << "\n";
-
-    const auto time_it = result.time_series.find("model_time_days");
-    if (time_it != result.time_series.end())
-    {
-        std::cout << "  time series points: " << time_it->second.size() << "\n";
-    }
+    std::cout << "site properties:\n";
+    std::cout << "  distance from creek (m): " << loaded.site.distance_from_creek_m << "\n";
+    std::cout << "  creek bank elevation (m): " << loaded.site.creek_bank_elevation_m << "\n";
+    std::cout << "  local tidal offset (m): " << loaded.site.local_tidal_offset_m << "\n";
 
     std::cout << "\n";
-    std::cout << "final state summary:\n";
+    std::cout << "final sediment state summary:\n";
     std::cout << "  number of layers: " << result.final_state.n_layers() << "\n";
     std::cout << "  number of materials: " << result.final_state.n_materials() << "\n";
     std::cout << "  surface elevation: " << result.final_state.get_surface_elevation() << "\n";
@@ -80,6 +74,19 @@ void print_run_summary(
     }
 
     std::cout << "\n";
+    std::cout << "final ecohydrology state:\n";
+    std::cout << "  root-zone salinity (ppt): "
+              << result.final_ecohydrology_state.root_zone_salinity_ppt << "\n";
+    std::cout << "  aboveground biomass (kg m^-2): "
+              << result.final_ecohydrology_state.aboveground_biomass_kg_m2 << "\n";
+    std::cout << "  belowground biomass (kg m^-2): "
+              << result.final_ecohydrology_state.belowground_biomass_kg_m2 << "\n";
+    std::cout << "  lai: "
+              << result.final_ecohydrology_state.lai << "\n";
+    std::cout << "  litter (kg m^-2): "
+              << result.final_ecohydrology_state.litter_kg_m2 << "\n";
+
+    std::cout << "\n";
     std::cout << "final total mass by material:\n";
 
     const Eigen::ArrayXd total_mass =
@@ -94,50 +101,53 @@ void print_run_summary(
                   << "\n";
     }
 
-    const auto model_time_it = result.time_series.find("model_time_days");
-    const auto surface_it = result.time_series.find("surface_elevation");
-    const auto peak_it = result.time_series.find("peak_biomass");
-    const auto ag_it = result.time_series.find("aboveground_biomass");
-    const auto bg_it = result.time_series.find("belowground_biomass");
-    const auto mortality_it = result.time_series.find("belowground_mortality");
-    const auto n_layers_it = result.time_series.find("n_layers");
+    std::cout << "\n";
+    std::cout << "time series:\n";
 
-    if (model_time_it != result.time_series.end() &&
-        surface_it != result.time_series.end() &&
-        peak_it != result.time_series.end() &&
-        ag_it != result.time_series.end() &&
-        bg_it != result.time_series.end() &&
-        mortality_it != result.time_series.end() &&
-        n_layers_it != result.time_series.end())
+    const auto& model_time_days =
+        result.time_series.at("model_time_days");
+    const auto& surface_elevation =
+        result.time_series.at("surface_elevation");
+    const auto& peak_biomass =
+        result.time_series.at("peak_biomass");
+    const auto& aboveground_biomass =
+        result.time_series.at("aboveground_biomass");
+    const auto& belowground_biomass =
+        result.time_series.at("belowground_biomass");
+    const auto& belowground_mortality =
+        result.time_series.at("belowground_mortality");
+    const auto& salinity =
+        result.time_series.at("root_zone_salinity_ppt");
+    const auto& lai =
+        result.time_series.at("lai");
+    const auto& gpp =
+        result.time_series.at("gpp_gC_m2_d");
+    const auto& npp =
+        result.time_series.at("npp_gC_m2_d");
+    const auto& et_total =
+        result.time_series.at("et_total_mm_d");
+    const auto& inundation_fraction =
+        result.time_series.at("inundation_fraction");
+    const auto& inundation_depth =
+        result.time_series.at("mean_inundation_depth_m");
+
+    for (std::size_t i = 0; i < model_time_days.size(); ++i)
     {
-        std::cout << "\n";
-        std::cout << "time series:\n";
-
-        for (std::size_t i = 0; i < model_time_it->second.size(); ++i)
-        {
-            std::cout << "  step " << i
-                      << " time_days=" << model_time_it->second[i]
-                      << " surface_elevation=" << surface_it->second[i]
-                      << " n_layers=" << n_layers_it->second[i]
-                      << " peak_biomass=" << peak_it->second[i]
-                      << " aboveground_biomass=" << ag_it->second[i]
-                      << " belowground_biomass=" << bg_it->second[i]
-                      << " belowground_mortality=" << mortality_it->second[i]
-                      << "\n";
-        }
-    }
-
-    if (!result.column_snapshots.empty())
-    {
-        std::cout << "\n";
-        std::cout << "saved column snapshot times:\n";
-
-        for (const auto& snapshot : result.column_snapshots)
-        {
-            std::cout << "  time_days=" << snapshot.model_time_days
-                      << " n_layers=" << snapshot.state.n_layers()
-                      << "\n";
-        }
+        std::cout << "  step " << i
+                  << " time_days=" << model_time_days[i]
+                  << " surface_elevation=" << surface_elevation[i]
+                  << " peak_biomass=" << peak_biomass[i]
+                  << " aboveground_biomass=" << aboveground_biomass[i]
+                  << " belowground_biomass=" << belowground_biomass[i]
+                  << " belowground_mortality=" << belowground_mortality[i]
+                  << " root_zone_salinity_ppt=" << salinity[i]
+                  << " lai=" << lai[i]
+                  << " gpp_gC_m2_d=" << gpp[i]
+                  << " npp_gC_m2_d=" << npp[i]
+                  << " et_total_mm_d=" << et_total[i]
+                  << " inundation_fraction=" << inundation_fraction[i]
+                  << " mean_inundation_depth_m=" << inundation_depth[i]
+                  << "\n";
     }
 }
 
@@ -148,13 +158,25 @@ void run_from_yaml(const std::string& config_file)
     const loaded_run_config loaded =
         config_io::load_run_config(config_file);
 
+    const auto water_level =
+        process_factory::create_water_level_model(
+            loaded.simulation.water_level_model_name);
+
+    const auto evapotranspiration =
+        process_factory::create_evapotranspiration_model(
+            loaded.simulation.evapotranspiration_model_name);
+
+    const auto salinity =
+        process_factory::create_salinity_model(
+            loaded.simulation.salinity_model_name);
+
+    const auto vegetation =
+        process_factory::create_vegetation_model(
+            loaded.simulation.vegetation_model_name);
+
     const auto deposition =
         process_factory::create_deposition_model(
             loaded.simulation.deposition_model_name);
-
-    const auto biomass =
-        process_factory::create_biomass_model(
-            loaded.simulation.biomass_model_name);
 
     const auto root_allocation =
         process_factory::create_root_allocation_model(
@@ -169,8 +191,11 @@ void run_from_yaml(const std::string& config_file)
             loaded.simulation.compaction_model_name);
 
     simulator model(
+        water_level,
+        evapotranspiration,
+        salinity,
+        vegetation,
         deposition,
-        biomass,
         root_allocation,
         decay,
         compaction);
@@ -181,22 +206,11 @@ void run_from_yaml(const std::string& config_file)
             loaded.materials,
             loaded.parameters,
             loaded.forcing,
+            loaded.site,
             loaded.initial_state,
-            loaded.output);
+            loaded.initial_ecohydrology_state);
 
     print_run_summary(loaded, result);
-
-    if (!loaded.output.file.empty() &&
-        (loaded.output.write_time_series || loaded.output.write_column_snapshots))
-    {
-        result_io::write_netcdf(
-            loaded.output.file,
-            result,
-            loaded.materials);
-
-        std::cout << "\n";
-        std::cout << "wrote NetCDF output: " << loaded.output.file << "\n";
-    }
 }
 }
 

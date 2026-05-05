@@ -15,11 +15,9 @@
 //   - parameters
 //   - materials
 //   - forcing steps
-//   - compact constant forcing
-//   - explicit initial state layers
-//   - repeated initial layers
-//   - compact uniform initial columns
-//   - output and snapshot settings
+//   - initial sediment-column state
+//   - initial ecohydrology state
+//   - site properties
 //
 // layer ordering convention:
 //   - layers are listed deepest to surface
@@ -39,32 +37,36 @@
 
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace marsh_model
 {
 namespace
 {
-template <typename t>
-t get_required_scalar(const YAML::Node& node, const std::string& key)
+template <typename T>
+T get_required_scalar(const YAML::Node& node, const std::string& key)
 {
     if (!node[key])
     {
         throw std::runtime_error("missing required key: " + key);
     }
 
-    return node[key].as<t>();
+    return node[key].as<T>();
 }
 
-template <typename t>
-t get_optional_scalar(const YAML::Node& node, const std::string& key, const t& default_value)
+template <typename T>
+T get_optional_scalar(
+    const YAML::Node& node,
+    const std::string& key,
+    const T& default_value)
 {
     if (!node[key])
     {
         return default_value;
     }
 
-    return node[key].as<t>();
+    return node[key].as<T>();
 }
 
 material_category parse_material_category(const std::string& name)
@@ -134,14 +136,16 @@ material_properties parse_material(const YAML::Node& node)
         compaction.e_0 = get_optional_scalar<double>(node["compaction"], "e_0", 0.0);
         compaction.compression_index =
             get_optional_scalar<double>(node["compaction"], "compression_index", 0.0);
-        compaction.sigma_0 = get_optional_scalar<double>(node["compaction"], "sigma_0", 1.0);
+        compaction.sigma_0 =
+            get_optional_scalar<double>(node["compaction"], "sigma_0", 1.0);
         material.compaction = compaction;
     }
 
     if (node["settling"])
     {
         settling_properties settling;
-        settling.diameter = get_optional_scalar<double>(node["settling"], "diameter", 0.0);
+        settling.diameter =
+            get_optional_scalar<double>(node["settling"], "diameter", 0.0);
         settling.settling_velocity =
             get_optional_scalar<double>(node["settling"], "settling_velocity", 0.0);
         material.settling = settling;
@@ -161,16 +165,60 @@ simulation_config parse_simulation_config(const YAML::Node& node)
     config.initial_layer_count = get_optional_scalar<int>(node, "initial_layer_count", 1);
     config.initial_mineral_mass = get_optional_scalar<double>(node, "initial_mineral_mass", 25.0);
 
+    config.water_level_model_name =
+        get_optional_scalar<std::string>(
+            node,
+            "water_level_model_name",
+            "composite_water_level");
+
+    config.salinity_model_name =
+        get_optional_scalar<std::string>(
+            node,
+            "salinity_model_name",
+            "distance_flushing_salinity");
+
+    config.evapotranspiration_model_name =
+        get_optional_scalar<std::string>(
+            node,
+            "evapotranspiration_model_name",
+            "simple_canopy_et");
+
+    config.vegetation_model_name =
+        get_optional_scalar<std::string>(
+            node,
+            "vegetation_model_name",
+            "marsh_gpp_biomass");
+
     config.deposition_model_name =
-        get_optional_scalar<std::string>(node, "deposition_model_name", "tke_deposition");
+        get_optional_scalar<std::string>(
+            node,
+            "deposition_model_name",
+            "tke_deposition");
+
+    // legacy biomass model name retained for backward compatibility
     config.biomass_model_name =
-        get_optional_scalar<std::string>(node, "biomass_model_name", "seasonal_biomass");
+        get_optional_scalar<std::string>(
+            node,
+            "biomass_model_name",
+            "seasonal_biomass");
+
     config.root_allocation_model_name =
-        get_optional_scalar<std::string>(node, "root_allocation_model_name", "exponential_root_allocation");
+        get_optional_scalar<std::string>(
+            node,
+            "root_allocation_model_name",
+            "exponential_root_allocation");
+
     config.decay_model_name =
-        get_optional_scalar<std::string>(node, "decay_model_name", "first_order_decay");
+        get_optional_scalar<std::string>(
+            node,
+            "decay_model_name",
+            "marsh_decay");
+
     config.compaction_model_name =
-        get_optional_scalar<std::string>(node, "compaction_model_name", "two_stage_compaction");
+        get_optional_scalar<std::string>(
+            node,
+            "compaction_model_name",
+            "two_stage_compaction");
 
     return config;
 }
@@ -194,43 +242,21 @@ parameter_set parse_parameter_set(const YAML::Node& node)
     return parameters;
 }
 
-output_config parse_output_config(const YAML::Node& node)
-{
-    output_config output;
-
-    if (!node)
-    {
-        return output;
-    }
-
-    output.file =
-        get_optional_scalar<std::string>(node, "file", "run_output.nc");
-
-    output.write_time_series =
-        get_optional_scalar<bool>(node, "write_time_series", true);
-
-    output.write_column_snapshots =
-        get_optional_scalar<bool>(node, "write_column_snapshots", false);
-
-    output.snapshot_every_n_steps =
-        get_optional_scalar<int>(node, "snapshot_every_n_steps", 0);
-
-    if (node["snapshot_times_days"])
-    {
-        for (const auto& value : node["snapshot_times_days"])
-        {
-            output.snapshot_times_days.push_back(value.as<double>());
-        }
-    }
-
-    return output;
-}
-
-forcing_series parse_forcing_steps(const YAML::Node& steps_node)
+forcing_series parse_forcing_series(const YAML::Node& node)
 {
     forcing_series forcing;
 
-    for (const auto& step_node : steps_node)
+    if (!node)
+    {
+        return forcing;
+    }
+
+    if (!node["steps"])
+    {
+        throw std::runtime_error("forcing section must contain 'steps'");
+    }
+
+    for (const auto& step_node : node["steps"])
     {
         forcing_step step;
 
@@ -277,12 +303,17 @@ forcing_series parse_forcing_steps(const YAML::Node& steps_node)
         step.storm_surge_residual_m =
             get_optional_scalar<double>(step_node, "storm_surge_residual_m", 0.0);
 
-
         step.suspended_sediment_concentration =
-            get_optional_scalar<double>(step_node, "suspended_sediment_concentration", 0.0);
+            get_optional_scalar<double>(
+                step_node,
+                "suspended_sediment_concentration",
+                0.0);
 
         step.fine_sediment_concentration =
-            get_optional_scalar<double>(step_node, "fine_sediment_concentration", 0.0);
+            get_optional_scalar<double>(
+                step_node,
+                "fine_sediment_concentration",
+                0.0);
 
         step.external_pb210_supply =
             get_optional_scalar<double>(step_node, "external_pb210_supply", 0.0);
@@ -293,90 +324,64 @@ forcing_series parse_forcing_steps(const YAML::Node& steps_node)
     return forcing;
 }
 
-forcing_series parse_constant_forcing(const YAML::Node& node)
+site_properties parse_site_properties(const YAML::Node& node)
 {
-    forcing_series forcing;
+    site_properties site;
 
-    const int n_steps =
-        get_required_scalar<int>(node, "n_steps");
-
-    const double dt_days =
-        get_required_scalar<double>(node, "dt_days");
-
-    const double start_time_days =
-        get_optional_scalar<double>(node, "start_time_days", dt_days);
-
-    if (n_steps <= 0)
-    {
-        throw std::runtime_error("forcing.constant.n_steps must be positive");
-    }
-
-    if (dt_days <= 0.0)
-    {
-        throw std::runtime_error("forcing.constant.dt_days must be positive");
-    }
-
-    for (int i = 0; i < n_steps; ++i)
-    {
-        forcing_step step;
-
-        step.model_time_days = start_time_days + i * dt_days;
-        step.dt_days = dt_days;
-
-        step.mean_sea_level =
-            get_optional_scalar<double>(node, "mean_sea_level", 0.0);
-
-        step.mean_high_tide =
-            get_optional_scalar<double>(node, "mean_high_tide", 0.0);
-
-        step.tidal_amplitude =
-            get_optional_scalar<double>(node, "tidal_amplitude", 0.0);
-
-        step.tidal_period_hours =
-            get_optional_scalar<double>(node, "tidal_period_hours", 0.0);
-
-        step.temperature =
-            get_optional_scalar<double>(node, "temperature", 20.0);
-
-        step.suspended_sediment_concentration =
-            get_optional_scalar<double>(node, "suspended_sediment_concentration", 0.0);
-
-        step.fine_sediment_concentration =
-            get_optional_scalar<double>(node, "fine_sediment_concentration", 0.0);
-
-        step.external_pb210_supply =
-            get_optional_scalar<double>(node, "external_pb210_supply", 0.0);
-
-        forcing.add_step(step);
-    }
-
-    return forcing;
-}
-
-forcing_series parse_forcing_series(const YAML::Node& node)
-{
     if (!node)
     {
-        return forcing_series{};
+        return site;
     }
 
-    if (node["steps"])
-    {
-        return parse_forcing_steps(node["steps"]);
-    }
+    site.distance_from_creek_m =
+        get_optional_scalar<double>(node, "distance_from_creek_m", 0.0);
 
-    if (node["constant"])
-    {
-        return parse_constant_forcing(node["constant"]);
-    }
+    site.creek_bank_elevation_m =
+        get_optional_scalar<double>(node, "creek_bank_elevation_m", 0.0);
 
-    throw std::runtime_error("forcing section must contain either 'steps' or 'constant'");
+    site.local_tidal_offset_m =
+        get_optional_scalar<double>(node, "local_tidal_offset_m", 0.0);
+
+    return site;
 }
 
-column_state parse_initial_state_layers(
-    const YAML::Node& layers_node,
+ecohydrology_state parse_initial_ecohydrology_state(const YAML::Node& node)
+{
+    ecohydrology_state state;
+
+    if (!node)
+    {
+        return state;
+    }
+
+    state.root_zone_salinity_ppt =
+        get_optional_scalar<double>(node, "root_zone_salinity_ppt", 0.0);
+
+    state.aboveground_biomass_kg_m2 =
+        get_optional_scalar<double>(node, "aboveground_biomass_kg_m2", 0.0);
+
+    state.belowground_biomass_kg_m2 =
+        get_optional_scalar<double>(node, "belowground_biomass_kg_m2", 0.0);
+
+    state.lai =
+        get_optional_scalar<double>(node, "lai", 0.0);
+
+    state.litter_kg_m2 =
+        get_optional_scalar<double>(node, "litter_kg_m2", 0.0);
+
+    return state;
+}
+
+column_state parse_initial_state(
+    const YAML::Node& node,
     const material_catalog& materials)
 {
+    if (!node || !node["layers"])
+    {
+        throw std::runtime_error("initial_state section must contain 'layers'");
+    }
+
+    const YAML::Node layers_node = node["layers"];
     const int n_layers = static_cast<int>(layers_node.size());
     const int n_materials = materials.size();
 
@@ -440,199 +445,6 @@ column_state parse_initial_state_layers(
     return state;
 }
 
-column_state parse_initial_state_repeated_layer(
-    const YAML::Node& repeated_node,
-    const material_catalog& materials)
-{
-    const int repeat =
-        get_required_scalar<int>(repeated_node, "repeat");
-
-    if (repeat <= 0)
-    {
-        throw std::runtime_error("initial_state.repeated_layer.repeat must be positive");
-    }
-
-    const int n_materials = materials.size();
-
-    column_state state(repeat, n_materials);
-
-    Eigen::ArrayXd thickness = Eigen::ArrayXd::Zero(repeat);
-    Eigen::ArrayXd porosity = Eigen::ArrayXd::Zero(repeat);
-    Eigen::ArrayXd top_elevation = Eigen::ArrayXd::Zero(repeat);
-
-    const double layer_thickness =
-        get_required_scalar<double>(repeated_node, "thickness_m");
-
-    const double layer_porosity =
-        get_required_scalar<double>(repeated_node, "porosity");
-
-    const double layer_age_days =
-        get_optional_scalar<double>(repeated_node, "age_days", 0.0);
-
-    if (!repeated_node["mass_kg_m2"])
-    {
-        throw std::runtime_error("initial_state.repeated_layer must contain mass_kg_m2");
-    }
-
-    std::vector<double> layer_mass_by_material(n_materials, 0.0);
-
-    for (auto it = repeated_node["mass_kg_m2"].begin(); it != repeated_node["mass_kg_m2"].end(); ++it)
-    {
-        const std::string material_name = it->first.as<std::string>();
-        const double mass_value = it->second.as<double>();
-
-        if (!materials.has_material(material_name))
-        {
-            throw std::runtime_error(
-                "initial_state.repeated_layer references unknown material: " + material_name);
-        }
-
-        const int material_index =
-            materials.get_material_index(material_name);
-
-        layer_mass_by_material[material_index] = mass_value;
-    }
-
-    double cumulative_top_elevation = 0.0;
-
-    for (int layer_index = 0; layer_index < repeat; ++layer_index)
-    {
-        thickness(layer_index) = layer_thickness;
-        porosity(layer_index) = layer_porosity;
-        state.layer_age()(layer_index) = layer_age_days;
-
-        for (int material_index = 0; material_index < n_materials; ++material_index)
-        {
-            state.mass()(layer_index, material_index) = layer_mass_by_material[material_index];
-        }
-
-        cumulative_top_elevation += layer_thickness;
-        top_elevation(layer_index) = cumulative_top_elevation;
-    }
-
-    state.set_layer_geometry(thickness, porosity, top_elevation);
-    return state;
-}
-
-column_state parse_initial_state_uniform_column(
-    const YAML::Node& uniform_node,
-    const material_catalog& materials)
-{
-    const int n_layers =
-        get_required_scalar<int>(uniform_node, "n_layers");
-
-    const double total_thickness_m =
-        get_required_scalar<double>(uniform_node, "total_thickness_m");
-
-    const double layer_porosity =
-        get_required_scalar<double>(uniform_node, "porosity");
-
-    const double age_days =
-        get_optional_scalar<double>(uniform_node, "age_days", 0.0);
-
-    const std::string fill_material_name =
-        get_required_scalar<std::string>(uniform_node, "fill_material");
-
-    if (n_layers <= 0)
-    {
-        throw std::runtime_error("initial_state.uniform_column.n_layers must be positive");
-    }
-
-    if (total_thickness_m <= 0.0)
-    {
-        throw std::runtime_error("initial_state.uniform_column.total_thickness_m must be positive");
-    }
-
-    if (layer_porosity < 0.0 || layer_porosity >= 1.0)
-    {
-        throw std::runtime_error("initial_state.uniform_column.porosity must be in [0, 1)");
-    }
-
-    if (!materials.has_material(fill_material_name))
-    {
-        throw std::runtime_error(
-            "initial_state.uniform_column references unknown material: " + fill_material_name);
-    }
-
-    const int fill_material_index =
-        materials.get_material_index(fill_material_name);
-
-    const material_properties& fill_material =
-        materials.get_material(fill_material_index);
-
-    if (fill_material.density <= 0.0)
-    {
-        throw std::runtime_error(
-            "initial_state.uniform_column fill material must have positive density");
-    }
-
-    const int n_materials = materials.size();
-
-    column_state state(n_layers, n_materials);
-
-    Eigen::ArrayXd thickness = Eigen::ArrayXd::Zero(n_layers);
-    Eigen::ArrayXd porosity = Eigen::ArrayXd::Zero(n_layers);
-    Eigen::ArrayXd top_elevation = Eigen::ArrayXd::Zero(n_layers);
-
-    const double layer_thickness_m =
-        total_thickness_m / static_cast<double>(n_layers);
-
-    const double solid_fraction =
-        1.0 - layer_porosity;
-
-    const double solid_volume_per_layer_m3_m2 =
-        layer_thickness_m * solid_fraction;
-
-    const double mass_per_layer_kg_m2 =
-        solid_volume_per_layer_m3_m2 * fill_material.density;
-
-    double cumulative_top_elevation = 0.0;
-
-    for (int layer_index = 0; layer_index < n_layers; ++layer_index)
-    {
-        thickness(layer_index) = layer_thickness_m;
-        porosity(layer_index) = layer_porosity;
-        state.layer_age()(layer_index) = age_days;
-
-        state.mass()(layer_index, fill_material_index) = mass_per_layer_kg_m2;
-
-        cumulative_top_elevation += layer_thickness_m;
-        top_elevation(layer_index) = cumulative_top_elevation;
-    }
-
-    state.set_layer_geometry(thickness, porosity, top_elevation);
-    return state;
-}
-
-column_state parse_initial_state(
-    const YAML::Node& node,
-    const material_catalog& materials)
-{
-    if (!node)
-    {
-        throw std::runtime_error(
-            "initial_state section must contain one of: layers, repeated_layer, or uniform_column");
-    }
-
-    if (node["layers"])
-    {
-        return parse_initial_state_layers(node["layers"], materials);
-    }
-
-    if (node["repeated_layer"])
-    {
-        return parse_initial_state_repeated_layer(node["repeated_layer"], materials);
-    }
-
-    if (node["uniform_column"])
-    {
-        return parse_initial_state_uniform_column(node["uniform_column"], materials);
-    }
-
-    throw std::runtime_error(
-        "initial_state section must contain one of: layers, repeated_layer, or uniform_column");
-}
-
 material_catalog parse_material_catalog(const YAML::Node& node)
 {
     material_catalog materials;
@@ -665,8 +477,12 @@ loaded_run_config config_io::load_run_config(const std::string& yaml_file)
     config.parameters = parse_parameter_set(root["parameters"]);
     config.materials = parse_material_catalog(root["materials"]);
     config.forcing = parse_forcing_series(root["forcing"]);
-    config.initial_state = parse_initial_state(root["initial_state"], config.materials);
-    config.output = parse_output_config(root["output"]);
+    config.initial_state =
+        parse_initial_state(root["initial_state"], config.materials);
+    config.initial_ecohydrology_state =
+        parse_initial_ecohydrology_state(root["initial_ecohydrology_state"]);
+    config.site =
+        parse_site_properties(root["site"]);
 
     return config;
 }

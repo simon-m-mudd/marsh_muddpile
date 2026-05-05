@@ -21,6 +21,8 @@
 // -----------------------------------------------------------------------------
 
 #include "marsh_model/core/column_state.hpp"
+#include "marsh_model/core/ecohydrology_state.hpp"
+
 
 #include <string>
 #include <unordered_map>
@@ -40,5 +42,7 @@ struct simulation_result
     std::unordered_map<std::string, std::vector<double>> time_series;
     std::vector<std::vector<double>> total_mass_by_material_time_series;
     std::vector<column_snapshot> column_snapshots;
+    ecohydrology_state final_ecohydrology_state;
+
 };
 }

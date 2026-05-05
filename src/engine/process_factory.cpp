@@ -12,28 +12,78 @@
 // it is the bridge between yaml configuration and modular process selection.
 //
 // -----------------------------------------------------------------------------
-
 #include "marsh_model/engine/process_factory.hpp"
 
-#include "marsh_model/processes/exponential_root_allocation_model.hpp"
-#include "marsh_model/processes/first_order_decay_model.hpp"
-#include "marsh_model/processes/identity_compaction_model.hpp"
-#include "marsh_model/processes/identity_decay_model.hpp"
-#include "marsh_model/processes/null_biomass_model.hpp"
-#include "marsh_model/processes/null_root_allocation_model.hpp"
-#include "marsh_model/processes/seasonal_biomass_model.hpp"
-#include "marsh_model/processes/tke_deposition_model.hpp"
-#include "marsh_model/processes/two_stage_compaction_model.hpp"
+#include "marsh_model/processes/composite_water_level_model.hpp"
+#include "marsh_model/processes/distance_flushing_salinity_model.hpp"
+#include "marsh_model/processes/simple_canopy_et_model.hpp"
+#include "marsh_model/processes/marsh_gpp_biomass_model.hpp"
+
 #include "marsh_model/processes/zero_deposition_model.hpp"
-#include "marsh_model/processes/edge_distance_deposition_model.hpp"
+#include "marsh_model/processes/tke_deposition_model.hpp"
+
+#include "marsh_model/processes/null_biomass_model.hpp"
+#include "marsh_model/processes/seasonal_biomass_model.hpp"
+
+#include "marsh_model/processes/null_root_allocation_model.hpp"
+#include "marsh_model/processes/exponential_root_allocation_model.hpp"
+
+#include "marsh_model/processes/identity_decay_model.hpp"
+#include "marsh_model/processes/first_order_decay_model.hpp"
 #include "marsh_model/processes/marsh_decay_model.hpp"
 
-
+#include "marsh_model/processes/identity_compaction_model.hpp"
+#include "marsh_model/processes/two_stage_compaction_model.hpp"
 
 #include <stdexcept>
 
 namespace marsh_model
 {
+std::shared_ptr<water_level_model> process_factory::create_water_level_model(
+    const std::string& name)
+{
+    if (name == "composite_water_level")
+    {
+        return std::make_shared<composite_water_level_model>();
+    }
+
+    throw std::invalid_argument("unknown water level model: " + name);
+}
+
+std::shared_ptr<salinity_model> process_factory::create_salinity_model(
+    const std::string& name)
+{
+    if (name == "distance_flushing_salinity")
+    {
+        return std::make_shared<distance_flushing_salinity_model>();
+    }
+
+    throw std::invalid_argument("unknown salinity model: " + name);
+}
+
+std::shared_ptr<evapotranspiration_model>
+process_factory::create_evapotranspiration_model(
+    const std::string& name)
+{
+    if (name == "simple_canopy_et")
+    {
+        return std::make_shared<simple_canopy_et_model>();
+    }
+
+    throw std::invalid_argument("unknown evapotranspiration model: " + name);
+}
+
+std::shared_ptr<vegetation_model> process_factory::create_vegetation_model(
+    const std::string& name)
+{
+    if (name == "marsh_gpp_biomass")
+    {
+        return std::make_shared<marsh_gpp_biomass_model>();
+    }
+
+    throw std::invalid_argument("unknown vegetation model: " + name);
+}
+
 std::shared_ptr<deposition_model> process_factory::create_deposition_model(
     const std::string& name)
 {
@@ -46,11 +96,6 @@ std::shared_ptr<deposition_model> process_factory::create_deposition_model(
     {
         return std::make_shared<tke_deposition_model>();
     }
-    if (name == "edge_distance_deposition")
-    {
-        return std::make_shared<edge_distance_deposition_model>();
-    }
-
 
     throw std::invalid_argument("unknown deposition model: " + name);
 }
@@ -95,15 +140,14 @@ std::shared_ptr<decay_model> process_factory::create_decay_model(
         return std::make_shared<identity_decay_model>();
     }
 
-    if (name == "marsh_decay")
-    {
-        return std::make_shared<marsh_decay_model>();
-    }
-
-
     if (name == "first_order_decay")
     {
         return std::make_shared<first_order_decay_model>();
+    }
+
+    if (name == "marsh_decay")
+    {
+        return std::make_shared<marsh_decay_model>();
     }
 
     throw std::invalid_argument("unknown decay model: " + name);
