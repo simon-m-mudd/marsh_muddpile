@@ -27,6 +27,8 @@
 
 #include "marsh_model/processes/edge_distance_deposition_model.hpp"
 
+#include "marsh_model/core/tidal_utilities.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -66,87 +68,103 @@ Eigen::ArrayXd edge_distance_deposition_model::compute_surface_flux(
     const double distance_from_edge_m =
         get_parameter_or_default(parameters, "deposition_distance_from_edge_m", 0.0);
 
-    const double cycles_per_timestep =
-        compute_cycles_per_timestep(forcing);
+    const double surface_elevation_m = state.get_surface_elevation();
 
-    const double inundation_fraction_per_cycle =
-        compute_inundation_fraction_per_cycle(state, forcing);
-
-    const double inundation_seconds_per_cycle =
-        inundation_fraction_per_cycle * forcing.tidal_period_hours * 3600.0;
-
-    if (inundation_seconds_per_cycle <= 0.0 || cycles_per_timestep <= 0.0)
+    // Precompute per-material quantities that don't vary with tidal cycle.
+    struct material_deposit_props
     {
-        if (catalog.has_material("pb210"))
-        {
-            const int pb210_index = catalog.get_material_index("pb210");
-            surface_flux(pb210_index) += forcing.external_pb210_supply * forcing.dt_days;
-        }
+        bool active = false;
+        double local_concentration_kg_m3 = 0.0;
+        double settling_velocity_m_s = 0.0;
+        double decay_length_m = 0.0;
+    };
 
-        return surface_flux;
+    const int n_materials = catalog.size();
+    std::vector<material_deposit_props> mat_props(n_materials);
+
+    bool any_active = false;
+    for (int i = 0; i < n_materials; ++i)
+    {
+        const material_properties& material = catalog.get_material(i);
+
+        if (!material.allow_surface_deposition || !material.settling.has_value())
+            continue;
+
+        const double ws = material.settling->settling_velocity;
+        if (ws <= 0.0)
+            continue;
+
+        const double edge_c = compute_material_concentration_kg_m3(
+            material, forcing, parameters);
+        if (edge_c <= 0.0)
+            continue;
+
+        const double L = compute_decay_length_m(ws, forcing, parameters);
+
+        double local_c = edge_c;
+        if (L > 0.0)
+            local_c *= std::exp(-distance_from_edge_m / L);
+
+        mat_props[i].active = true;
+        mat_props[i].local_concentration_kg_m3 = local_c;
+        mat_props[i].settling_velocity_m_s = ws;
+        mat_props[i].decay_length_m = L;
+        any_active = true;
     }
 
-    for (int material_index = 0; material_index < catalog.size(); ++material_index)
+    if (any_active)
     {
-        const material_properties& material =
-            catalog.get_material(material_index);
+        // Pre-read harmonic constituent data once — avoids repeated map lookups
+        // inside the cycle loop.
+        const tidal_utils::tidal_data tidal =
+            tidal_utils::prepare_tidal_data(forcing, parameters);
 
-        if (!material.allow_surface_deposition)
+        // Integrate over each tidal cycle within the timestep.  For each cycle,
+        // compute the harmonic envelope (spring-neap varying amplitude and mean),
+        // then derive the inundation fraction analytically from the sinusoidal
+        // approximation with those cycle-specific parameters.
+        const int n_cycles = std::max(
+            1,
+            static_cast<int>(std::round(24.0 * forcing.dt_days / forcing.tidal_period_hours)));
+
+        const double step_start_hours = 24.0 * forcing.model_time_days;
+
+        for (int cycle = 0; cycle < n_cycles; ++cycle)
         {
-            continue;
+            const double cycle_start_hours =
+                step_start_hours + cycle * forcing.tidal_period_hours;
+
+            const tidal_utils::cycle_envelope env =
+                tidal_utils::compute_cycle_envelope(
+                    cycle_start_hours,
+                    forcing.tidal_period_hours,
+                    tidal);
+
+            const double inundation_fraction =
+                compute_inundation_fraction(
+                    surface_elevation_m,
+                    env.amplitude_m,
+                    env.mean_m);
+
+            const double inundation_seconds =
+                inundation_fraction * forcing.tidal_period_hours * 3600.0;
+
+            if (inundation_seconds <= 0.0)
+                continue;
+
+            for (int i = 0; i < n_materials; ++i)
+            {
+                if (!mat_props[i].active)
+                    continue;
+
+                surface_flux(i) +=
+                    mat_props[i].settling_velocity_m_s *
+                    mat_props[i].local_concentration_kg_m3 *
+                    inundation_seconds;
+            }
         }
-
-        if (!material.settling.has_value())
-        {
-            continue;
-        }
-
-        const double settling_velocity_m_s =
-            material.settling->settling_velocity;
-
-        if (settling_velocity_m_s <= 0.0)
-        {
-            continue;
-        }
-
-        const double edge_concentration_kg_m3 =
-            compute_material_concentration_kg_m3(
-                material,
-                forcing,
-                parameters);
-
-        if (edge_concentration_kg_m3 <= 0.0)
-        {
-            continue;
-        }
-
-        const double decay_length_m =
-            compute_decay_length_m(
-                settling_velocity_m_s,
-                forcing,
-                parameters);
-
-        double local_concentration_kg_m3 = edge_concentration_kg_m3;
-
-        if (decay_length_m > 0.0)
-        {
-            local_concentration_kg_m3 *=
-                std::exp(-distance_from_edge_m / decay_length_m);
-        }
-
-        const double deposited_mass_per_cycle_kg_m2 =
-            settling_velocity_m_s *
-            local_concentration_kg_m3 *
-            inundation_seconds_per_cycle;
-
-        surface_flux(material_index) =
-            cycles_per_timestep * deposited_mass_per_cycle_kg_m2;
     }
 
-    // Optional direct external supply term for pb210.
-    //
-    // Convention:
-    // forcing.external_pb210_supply is interpreted as kg m^-2 day^-1.
     if (catalog.has_material("pb210"))
     {
         const int pb210_index = catalog.get_material_index("pb210");
@@ -156,49 +174,26 @@ Eigen::ArrayXd edge_distance_deposition_model::compute_surface_flux(
     return surface_flux;
 }
 
-double edge_distance_deposition_model::compute_cycles_per_timestep(
-    const forcing_step& forcing) const
+double edge_distance_deposition_model::compute_inundation_fraction(
+    double surface_elevation_m,
+    double cycle_amplitude_m,
+    double cycle_mean_m) const
 {
-    if (forcing.tidal_period_hours <= 0.0)
+    if (cycle_amplitude_m <= 0.0)
     {
-        return 0.0;
-    }
-
-    return 24.0 * forcing.dt_days / forcing.tidal_period_hours;
-}
-
-double edge_distance_deposition_model::compute_inundation_fraction_per_cycle(
-    const column_state& state,
-    const forcing_step& forcing) const
-{
-    const double tidal_amplitude_m = forcing.tidal_amplitude;
-    const double mean_sea_level_m = forcing.mean_sea_level;
-    const double surface_elevation_m = state.get_surface_elevation();
-
-    if (tidal_amplitude_m <= 0.0)
-    {
-        return (mean_sea_level_m > surface_elevation_m) ? 1.0 : 0.0;
+        return (cycle_mean_m > surface_elevation_m) ? 1.0 : 0.0;
     }
 
     const double relative_elevation =
-        (surface_elevation_m - mean_sea_level_m) / tidal_amplitude_m;
+        (surface_elevation_m - cycle_mean_m) / cycle_amplitude_m;
 
     if (relative_elevation <= -1.0)
-    {
         return 1.0;
-    }
-
     if (relative_elevation >= 1.0)
-    {
         return 0.0;
-    }
 
-    const double pi = 3.14159265358979323846;
-
-    const double inundation_fraction =
-        0.5 - std::asin(relative_elevation) / pi;
-
-    return std::clamp(inundation_fraction, 0.0, 1.0);
+    constexpr double pi = 3.14159265358979323846;
+    return std::clamp(0.5 - std::asin(relative_elevation) / pi, 0.0, 1.0);
 }
 
 double edge_distance_deposition_model::compute_decay_length_m(

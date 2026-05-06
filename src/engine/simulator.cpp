@@ -113,6 +113,8 @@ simulation_result simulator::run_forward(
     auto& mean_water_level_ts = result.time_series["mean_water_level_m"];
     auto& max_water_level_ts = result.time_series["max_water_level_m"];
 
+    result.total_mass_by_material_time_series.reserve(n_steps);
+
     model_time_days_ts.reserve(n_steps);
     surface_elevation_ts.reserve(n_steps);
     peak_biomass_ts.reserve(n_steps);
@@ -285,6 +287,10 @@ simulation_result simulator::run_forward(
         inundation_depth_ts.push_back(hydro.mean_inundation_depth_m);
         mean_water_level_ts.push_back(hydro.mean_water_level_m);
         max_water_level_ts.push_back(hydro.max_water_level_m);
+
+        const Eigen::ArrayXd mass_by_mat = state.get_total_mass_by_material();
+        result.total_mass_by_material_time_series.emplace_back(
+            mass_by_mat.data(), mass_by_mat.data() + mass_by_mat.size());
 
         if (progress_cb && step.model_time_days >= next_progress_days)
         {

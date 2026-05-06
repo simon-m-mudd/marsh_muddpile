@@ -52,11 +52,6 @@ public:
         const parameter_set& parameters) const override;
 
 private:
-    // Wraps absolute model time to a day-of-year value for seasonal mortality.
-    double compute_day_of_year_days(
-        const forcing_step& forcing,
-        const parameter_set& parameters) const;
-
     // Returns current LAI, falling back to a biomass-derived estimate if unset.
     double compute_effective_lai(
         const ecohydrology_state& eco_state,
@@ -93,12 +88,12 @@ private:
         double aboveground_biomass_kg_m2,
         const parameter_set& parameters) const;
 
-    // Baseline senescence plus a seasonal cosine cycle and excess-stress terms
+    // Baseline senescence plus a cold-temperature term and excess-stress terms
     // for flooding and salinity.
     double compute_aboveground_mortality_rate_per_day(
         const ecohydrology_state& eco_state,
         const hydrology_diagnostics& hydro,
-        double day_of_year_days,
+        double temperature_c,
         const parameter_set& parameters) const;
 
     // Baseline root turnover amplified by excess flooding or salinity stress.

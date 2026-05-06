@@ -21,6 +21,7 @@
 
 #include "marsh_model/processes/zero_deposition_model.hpp"
 #include "marsh_model/processes/tke_deposition_model.hpp"
+#include "marsh_model/processes/edge_distance_deposition_model.hpp"
 
 #include "marsh_model/processes/null_biomass_model.hpp"
 #include "marsh_model/processes/seasonal_biomass_model.hpp"
@@ -95,6 +96,11 @@ std::shared_ptr<deposition_model> process_factory::create_deposition_model(
     if (name == "tke_deposition")
     {
         return std::make_shared<tke_deposition_model>();
+    }
+
+    if (name == "edge_distance_deposition")
+    {
+        return std::make_shared<edge_distance_deposition_model>();
     }
 
     throw std::invalid_argument("unknown deposition model: " + name);

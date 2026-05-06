@@ -41,6 +41,7 @@
 #include "marsh_model/processes/tke_deposition_model.hpp"
 
 #include "marsh_model/core/material_properties.hpp"
+#include "marsh_model/core/tidal_utilities.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -91,19 +92,54 @@ Eigen::ArrayXd tke_deposition_model::compute_surface_flux(
             reference_slope,
             parameters);
 
-    const double cycles_per_timestep =
-        compute_cycles_per_timestep(forcing);
+    // Total number of tidal cycles in this timestep.
+    const double n_cycles_real =
+        24.0 * forcing.dt_days / forcing.tidal_period_hours;
+    const int n_cycles = std::max(1, static_cast<int>(std::round(n_cycles_real)));
 
-    const Eigen::ArrayXd flux_per_tidal_cycle =
-        compute_flux_per_tidal_cycle(
-            state,
-            forcing,
-            catalog,
-            parameters,
-            vegetation_biomass_g_m2,
-            peak_flow_velocity_m_s);
+    // Distribute the total substep budget (deposition_time_fractions_per_tide)
+    // evenly across cycles, with a minimum of 50 per cycle to preserve adequate
+    // intra-cycle resolution for the TKE settling/trapping physics.
+    const double total_time_fractions =
+        get_parameter_or_default(parameters, "deposition_time_fractions_per_tide", 720.0);
+    const int substeps_per_cycle = std::max(
+        50,
+        static_cast<int>(std::round(total_time_fractions / n_cycles)));
 
-    surface_flux = cycles_per_timestep * flux_per_tidal_cycle;
+    // Pre-read harmonic constituent data once — avoids repeated map lookups
+    // inside the cycle loop.
+    const tidal_utils::tidal_data tidal = tidal_utils::prepare_tidal_data(forcing, parameters);
+
+    // Absolute start time of this forcing step in hours.
+    const double step_start_hours = 24.0 * forcing.model_time_days;
+
+    // Integrate over each tidal cycle within the timestep, using the actual
+    // spring-neap amplitude for that cycle from the harmonic reconstruction.
+    for (int cycle = 0; cycle < n_cycles; ++cycle)
+    {
+        const double cycle_start_hours =
+            step_start_hours + cycle * forcing.tidal_period_hours;
+
+        const tidal_utils::cycle_envelope env =
+            tidal_utils::compute_cycle_envelope(
+                cycle_start_hours,
+                forcing.tidal_period_hours,
+                tidal);
+
+        const Eigen::ArrayXd cycle_flux =
+            compute_flux_per_tidal_cycle(
+                state,
+                forcing,
+                catalog,
+                parameters,
+                vegetation_biomass_g_m2,
+                peak_flow_velocity_m_s,
+                env.amplitude_m,
+                env.mean_m,
+                substeps_per_cycle);
+
+        surface_flux += cycle_flux;
+    }
 
     if (catalog.has_material("pb210"))
     {
@@ -112,17 +148,6 @@ Eigen::ArrayXd tke_deposition_model::compute_surface_flux(
     }
 
     return surface_flux;
-}
-
-double tke_deposition_model::compute_cycles_per_timestep(
-    const forcing_step& forcing) const
-{
-    if (forcing.tidal_period_hours <= 0.0)
-    {
-        return 0.0;
-    }
-
-    return 24.0 * forcing.dt_days / forcing.tidal_period_hours;
 }
 
 double tke_deposition_model::compute_reference_slope(
@@ -168,7 +193,10 @@ Eigen::ArrayXd tke_deposition_model::compute_flux_per_tidal_cycle(
     const material_catalog& catalog,
     const parameter_set& parameters,
     double vegetation_biomass_g_m2,
-    double peak_flow_velocity_m_s) const
+    double peak_flow_velocity_m_s,
+    double cycle_amplitude_m,
+    double cycle_mean_m,
+    int cycle_substeps) const
 {
     const int n_materials = catalog.size();
 
@@ -183,9 +211,6 @@ Eigen::ArrayXd tke_deposition_model::compute_flux_per_tidal_cycle(
     std::vector<bool> can_deposit(n_materials, false);
 
     const double pi = 3.14159265358979323846;
-
-    const double time_fractions =
-        get_parameter_or_default(parameters, "deposition_time_fractions_per_tide", 15000.0);
 
     const double min_water_depth_m =
         get_parameter_or_default(parameters, "deposition_min_water_depth_m", 0.002);
@@ -224,10 +249,10 @@ Eigen::ArrayXd tke_deposition_model::compute_flux_per_tidal_cycle(
         get_parameter_or_default(parameters, "deposition_epsilon", 2.08);
 
     const double dt_hours =
-        forcing.tidal_period_hours / std::max(1.0, time_fractions);
+        forcing.tidal_period_hours / static_cast<double>(cycle_substeps);
 
     const double water_depth_amplitude_rate_m_per_hour =
-        2.0 * forcing.tidal_amplitude * pi / forcing.tidal_period_hours;
+        2.0 * cycle_amplitude_m * pi / forcing.tidal_period_hours;
 
     const double alpha_t =
         alpha * kappa * std::pow(mu, gamma_tr - epsilon) / std::pow(nu_m2_s, gamma_tr);
@@ -275,22 +300,24 @@ Eigen::ArrayXd tke_deposition_model::compute_flux_per_tidal_cycle(
         }
     }
 
-    double tidal_time_hours = 0.0;
-
-    while (tidal_time_hours < forcing.tidal_period_hours)
+    for (int substep = 0; substep < cycle_substeps; ++substep)
     {
-        tidal_time_hours += dt_hours;
+        const double tidal_time_hours =
+            (substep + 0.5) * dt_hours;
 
         const double water_depth_m =
             compute_water_depth_m(
                 tidal_time_hours,
-                forcing,
+                cycle_amplitude_m,
+                cycle_mean_m,
+                forcing.tidal_period_hours,
                 surface_elevation_m);
 
         const double dwater_depth_dt_m_per_hour =
             compute_water_depth_rate_m_per_hour(
                 tidal_time_hours,
-                forcing);
+                cycle_amplitude_m,
+                forcing.tidal_period_hours);
 
         if (water_depth_m <= min_water_depth_m)
         {
@@ -411,15 +438,17 @@ double tke_deposition_model::compute_material_concentration_kg_m3(
 
 double tke_deposition_model::compute_water_depth_m(
     double tidal_time_hours,
-    const forcing_step& forcing,
+    double cycle_amplitude_m,
+    double cycle_mean_m,
+    double tidal_period_hours,
     double surface_elevation_m) const
 {
     const double pi = 3.14159265358979323846;
 
     const double water_depth_m =
-        forcing.tidal_amplitude *
-            std::sin(2.0 * pi * (tidal_time_hours / forcing.tidal_period_hours - 0.25)) +
-        forcing.mean_sea_level -
+        cycle_amplitude_m *
+            std::sin(2.0 * pi * (tidal_time_hours / tidal_period_hours - 0.25)) +
+        cycle_mean_m -
         surface_elevation_m;
 
     return std::max(0.0, water_depth_m);
@@ -427,14 +456,15 @@ double tke_deposition_model::compute_water_depth_m(
 
 double tke_deposition_model::compute_water_depth_rate_m_per_hour(
     double tidal_time_hours,
-    const forcing_step& forcing) const
+    double cycle_amplitude_m,
+    double tidal_period_hours) const
 {
     const double pi = 3.14159265358979323846;
 
     return
-        2.0 * pi * forcing.tidal_amplitude *
-        std::cos(2.0 * pi * (tidal_time_hours / forcing.tidal_period_hours - 0.25)) /
-        forcing.tidal_period_hours;
+        2.0 * pi * cycle_amplitude_m *
+        std::cos(2.0 * pi * (tidal_time_hours / tidal_period_hours - 0.25)) /
+        tidal_period_hours;
 }
 
 double tke_deposition_model::compute_turbulent_kinetic_energy(

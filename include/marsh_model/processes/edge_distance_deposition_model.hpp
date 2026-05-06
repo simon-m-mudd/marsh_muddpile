@@ -52,12 +52,10 @@ public:
         const parameter_set& parameters) const override;
 
 private:
-    double compute_cycles_per_timestep(
-        const forcing_step& forcing) const;
-
-    double compute_inundation_fraction_per_cycle(
-        const column_state& state,
-        const forcing_step& forcing) const;
+    double compute_inundation_fraction(
+        double surface_elevation_m,
+        double cycle_amplitude_m,
+        double cycle_mean_m) const;
 
     double compute_decay_length_m(
         double settling_velocity_m_s,

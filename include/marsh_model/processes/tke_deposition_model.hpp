@@ -64,7 +64,10 @@ private:
         const material_catalog& catalog,
         const parameter_set& parameters,
         double vegetation_biomass_g_m2,
-        double peak_flow_velocity_m_s) const;
+        double peak_flow_velocity_m_s,
+        double cycle_amplitude_m,
+        double cycle_mean_m,
+        int cycle_substeps) const;
 
     double compute_material_concentration_kg_m3(
         const material_properties& material,
@@ -73,12 +76,15 @@ private:
 
     double compute_water_depth_m(
         double tidal_time_hours,
-        const forcing_step& forcing,
+        double cycle_amplitude_m,
+        double cycle_mean_m,
+        double tidal_period_hours,
         double surface_elevation_m) const;
 
     double compute_water_depth_rate_m_per_hour(
         double tidal_time_hours,
-        const forcing_step& forcing) const;
+        double cycle_amplitude_m,
+        double tidal_period_hours) const;
 
     double compute_turbulent_kinetic_energy(
         double vegetation_biomass_g_m2,

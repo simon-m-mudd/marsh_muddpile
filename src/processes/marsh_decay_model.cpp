@@ -1,3 +1,65 @@
+// marsh_decay_model.cpp
+//
+// Part of marsh_muddpile -- https://github.com/simon-m-mudd/marsh_muddpile
+//
+// Copyright (C) 2026 Simon M. Mudd
+// Released under the GNU General Public Licence v3 (GPL-3.0)
+// See LICENSE file or https://www.gnu.org/licenses/gpl-3.0.html
+//
+// -----------------------------------------------------------------------------
+// Organic matter decay for the marsh sediment column.
+//
+// Each time step, every organic layer loses mass according to a first-order
+// decay law.  The per-material decay rate is:
+//
+//   k_eff = k_0 * f_depth(z) * f_temperature(T) * modifier
+//
+// where:
+//   k_0            - surface decay rate from material catalogue (d-1)
+//   f_depth(z)     - exponential attenuation with depth below surface:
+//                    exp(-z / gamma).  gamma = 0 disables depth attenuation.
+//   f_temperature  - linear temperature sensitivity above a reference value:
+//                    1 + factor * (T - T_ref).  Disabled when factor = 0.
+//   modifier       - dimensionless multiplier from
+//                    hydro_salinity_decomposition_modifier_model, which
+//                    accounts for anoxia (inundation) and salinity inhibition
+//                    separately for labile, refractory, and root-derived pools.
+//
+// The mass remaining at the end of the step is computed either exactly:
+//   M(t+dt) = M(t) * exp(-k_eff * dt)
+// or with a second-order Taylor approximation when
+// decay_use_exact_solution = 0:
+//   M(t+dt) = M(t) * (1 - k_eff*dt + 0.5*(k_eff*dt)^2)
+//
+// Only materials whose catalogue entry carries decay properties are touched;
+// mineral fractions and live roots are skipped.
+//
+// References:
+//   Berner, R.A., 1980. Early Diagenesis: A Theoretical Approach.
+//     Princeton University Press, Princeton NJ.
+//     (depth-dependent decay: chapter 2)
+//
+//   Olson, J.S., 1963. Energy storage and the balance of producers and
+//     decomposers in ecological systems. Ecology 44, 322-331.
+//     https://doi.org/10.2307/1932179
+//     (first-order decay model for organic matter)
+//
+//   Morris, J.T., Bowden, W.B., 1986. A mechanistic, numerical model of
+//     sedimentation, mineralisation, and decomposition for marsh sediments.
+//     Soil Science Society of America Journal 50, 96-105.
+//     https://doi.org/10.2136/sssaj1986.03615995005000010019x
+//
+//   Mudd, S.M., Howell, S.M., Morris, J.T., 2009. Impact of dynamic feedbacks
+//     between sedimentation, sea-level rise, and biomass production on near-surface
+//     marsh stratigraphy and carbon accumulation. Estuarine, Coastal and Shelf
+//     Science 82, 377-389.
+//     https://doi.org/10.1016/j.ecss.2009.01.028
+//
+//   Kirwan, M.L., Mudd, S.M., 2012. Response of salt-marsh carbon accumulation
+//     to climate change. Nature 489, 550-553.
+//     https://doi.org/10.1038/nature11440
+// -----------------------------------------------------------------------------
+
 #include "marsh_model/processes/marsh_decay_model.hpp"
 
 #include "marsh_model/engine/surface_property_summariser.hpp"
@@ -28,6 +90,12 @@ double get_parameter_or_default(
     return default_value;
 }
 
+// Constructs a minimal hydrology_diagnostics when one has not been supplied by
+// the simulator (e.g. when decay is called standalone in tests).  If the
+// forcing carries an observed water level it is used directly; otherwise the
+// inundation fraction is estimated analytically from the tidal amplitude and
+// surface elevation using the arcsine relationship for a sinusoidal tide:
+//   inundation_fraction = 0.5 - arcsin((z - MSL) / amplitude) / pi
 hydrology_diagnostics build_fallback_hydrology(
     const column_state& state,
     const forcing_step& forcing,
@@ -109,6 +177,9 @@ hydrology_diagnostics build_fallback_hydrology(
     return hydro;
 }
 
+// Returns the best available root-zone salinity when none has been set by the
+// salinity model.  Uses the creek salinity from the forcing step if positive,
+// otherwise falls back to the salinity_default_creek_ppt parameter.
 double get_default_root_zone_salinity_ppt(
     const forcing_step& forcing,
     const parameter_set& parameters)
@@ -124,6 +195,9 @@ double get_default_root_zone_salinity_ppt(
         30.0);
 }
 
+// Maps a material's category to the correct pre-computed modifier from
+// hydro_salinity_decomposition_modifier_model.  Mineral materials and any
+// unrecognised categories return 1.0 (no modification).
 double compute_pool_modifier(
     const material_properties& material,
     const decomposition_modifiers& modifiers)
@@ -145,6 +219,12 @@ double compute_pool_modifier(
 }
 }
 
+// Main entry point called once per time step by the simulator.
+// Iterates over every layer-material pair, computes the effective decay rate,
+// and multiplies the stored mass by the survival fraction for the step.
+// Layers with no decayable material and mineral materials are skipped.
+// The layer loop is optionally parallelised with OpenMP for columns with more
+// than 32 layers.
 void marsh_decay_model::apply_decay(
     column_state& state,
     const forcing_step& forcing,
@@ -269,6 +349,8 @@ void marsh_decay_model::apply_decay(
     }
 }
 
+// Returns the depth of the layer midpoint below the sediment surface (m).
+// Used to evaluate the depth-attenuation term in compute_decay_rate_per_day.
 double marsh_decay_model::compute_layer_midpoint_depth_m(
     const column_state& state,
     int layer_index) const
@@ -285,6 +367,13 @@ double marsh_decay_model::compute_layer_midpoint_depth_m(
     return surface_elevation - layer_top_elevation + 0.5 * layer_thickness;
 }
 
+// Computes the effective first-order decay rate (d-1) for one material in one
+// layer, applying depth and temperature corrections to the catalogue rate k_0:
+//
+//   k_eff = k_0 * exp(-z / gamma) * max(0, 1 + factor * (T - T_ref))
+//
+// gamma = 0 skips depth attenuation; temperature_factor_per_degree = 0 (the
+// default) skips temperature sensitivity, giving a purely depth-dependent rate.
 double marsh_decay_model::compute_decay_rate_per_day(
     const material_properties& material,
     double midpoint_depth_m,
@@ -331,6 +420,10 @@ double marsh_decay_model::compute_decay_rate_per_day(
     return std::max(0.0, decay_rate_per_day);
 }
 
+// Returns the fraction of mass surviving one time step (dimensionless, 0-1).
+// The exact exponential solution exp(-k*dt) is used by default.  Setting
+// decay_use_exact_solution = 0 switches to a second-order Taylor expansion,
+// which is cheaper but becomes inaccurate when k*dt is large.
 double marsh_decay_model::compute_decay_multiplier(
     double decay_rate_per_day,
     double dt_days,

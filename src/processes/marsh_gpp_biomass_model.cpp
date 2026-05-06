@@ -74,9 +74,6 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
         return diagnostics;
     }
 
-    const double day_of_year_days =
-        compute_day_of_year_days(forcing, parameters);
-
     const double lai =
         compute_effective_lai(eco_state, parameters);
 
@@ -189,7 +186,7 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
         compute_aboveground_mortality_rate_per_day(
             eco_state,
             hydro,
-            day_of_year_days,
+            forcing.temperature,
             parameters);
 
     const double belowground_mortality_rate_per_day =
@@ -206,21 +203,43 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
         belowground_mortality_rate_per_day *
         std::max(0.0, eco_state.belowground_biomass_kg_m2);
 
-    eco_state.aboveground_biomass_kg_m2 =
-        std::max(
-            0.0,
-            eco_state.aboveground_biomass_kg_m2 +
-            forcing.dt_days *
-                (diagnostics.aboveground_growth_kg_m2_d -
-                 diagnostics.aboveground_mortality_kg_m2_d));
+    // Exact solution to the first-order linear ODE
+    //   dbio/dt = g*(1 - bio/cap) - m*bio  =  g - (g/cap + m)*bio
+    // where g is the capacity-independent growth rate.  This avoids the
+    // forward-Euler overshoot that occurs with coarse monthly timesteps.
+    {
+        const double g_above =
+            diagnostics.npp_gC_m2_d * shoot_allocation_fraction /
+            (1000.0 * biomass_carbon_fraction);
+        const double B_above =
+            g_above / aboveground_capacity_kg_m2 +
+            aboveground_mortality_rate_per_day;
+        if (B_above > 0.0)
+        {
+            const double bio_eq = g_above / B_above;
+            const double bio0   = eco_state.aboveground_biomass_kg_m2;
+            eco_state.aboveground_biomass_kg_m2 = std::max(
+                0.0,
+                bio_eq + (bio0 - bio_eq) * std::exp(-B_above * forcing.dt_days));
+        }
+    }
 
-    eco_state.belowground_biomass_kg_m2 =
-        std::max(
-            0.0,
-            eco_state.belowground_biomass_kg_m2 +
-            forcing.dt_days *
-                (diagnostics.belowground_growth_kg_m2_d -
-                 diagnostics.belowground_mortality_kg_m2_d));
+    {
+        const double g_below =
+            diagnostics.npp_gC_m2_d * root_allocation_fraction /
+            (1000.0 * biomass_carbon_fraction);
+        const double B_below =
+            g_below / belowground_capacity_kg_m2 +
+            belowground_mortality_rate_per_day;
+        if (B_below > 0.0)
+        {
+            const double bio_eq = g_below / B_below;
+            const double bio0   = eco_state.belowground_biomass_kg_m2;
+            eco_state.belowground_biomass_kg_m2 = std::max(
+                0.0,
+                bio_eq + (bio0 - bio_eq) * std::exp(-B_below * forcing.dt_days));
+        }
+    }
 
     eco_state.litter_kg_m2 +=
         forcing.dt_days *
@@ -235,31 +254,6 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
     diagnostics.lai = eco_state.lai;
 
     return diagnostics;
-}
-
-// Maps absolute model time onto a repeating annual cycle [0, days_per_year).
-// Used to position the seasonal mortality peak relative to the current date.
-double marsh_gpp_biomass_model::compute_day_of_year_days(
-    const forcing_step& forcing,
-    const parameter_set& parameters) const
-{
-    const double days_per_year =
-        std::max(
-            1.0,
-            get_parameter_or_default(
-                parameters,
-                "vegetation_days_per_year",
-                365.0));
-
-    double day_of_year =
-        std::fmod(forcing.model_time_days, days_per_year);
-
-    if (day_of_year < 0.0)
-    {
-        day_of_year += days_per_year;
-    }
-
-    return day_of_year;
 }
 
 // Returns the LAI stored in eco_state if it has been set (> 0); otherwise
@@ -451,23 +445,15 @@ double marsh_gpp_biomass_model::compute_lai_from_aboveground_biomass(
 
 // Aboveground mortality rate (d^-1) composed of three additive terms:
 //   baseline rate  - background senescence throughout the year
-//   seasonal term  - cosine cycle peaking around the specified mortality peak day
-//                    (typically autumn / early winter for temperate species)
+//   cold term      - linear increase below a temperature threshold, representing
+//                    cold-driven senescence (replaces the former cosine cycle)
 //   stress terms   - excess mortality when inundation or salinity exceeds thresholds
 double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
     const ecohydrology_state& eco_state,
     const hydrology_diagnostics& hydro,
-    double day_of_year_days,
+    double temperature_c,
     const parameter_set& parameters) const
 {
-    const double days_per_year =
-        std::max(
-            1.0,
-            get_parameter_or_default(
-                parameters,
-                "vegetation_days_per_year",
-                365.0));
-
     const double baseline_rate =
         std::max(
             0.0,
@@ -475,20 +461,6 @@ double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
                 parameters,
                 "vegetation_aboveground_mortality_base_per_day",
                 0.001));
-
-    const double seasonal_amplitude =
-        std::max(
-            0.0,
-            get_parameter_or_default(
-                parameters,
-                "vegetation_aboveground_mortality_seasonal_amp_per_day",
-                0.002));
-
-    const double seasonal_peak_day =
-        get_parameter_or_default(
-            parameters,
-            "vegetation_mortality_peak_day",
-            300.0);
 
     const double hydro_threshold =
         clamp(
@@ -521,23 +493,32 @@ double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
                 "vegetation_aboveground_salinity_mortality_slope_per_day_per_ppt",
                 0.0005));
 
-    const double seasonal_term =
-        0.5 *
-        (1.0 -
-         std::cos(
-             2.0 * 3.14159265358979323846 *
-             (day_of_year_days - seasonal_peak_day) /
-             days_per_year));
-
     const double hydro_excess =
         std::max(0.0, hydro.inundation_fraction - hydro_threshold);
 
     const double salinity_excess =
         std::max(0.0, eco_state.root_zone_salinity_ppt - salinity_threshold);
 
+    const double cold_mortality_threshold_c =
+        get_parameter_or_default(
+            parameters,
+            "vegetation_cold_mortality_threshold_c",
+            20.0);
+
+    const double cold_mortality_slope =
+        std::max(
+            0.0,
+            get_parameter_or_default(
+                parameters,
+                "vegetation_cold_mortality_slope_per_day_per_c",
+                0.002));
+
+    const double cold_excess_c =
+        std::max(0.0, cold_mortality_threshold_c - temperature_c);
+
     return
         baseline_rate +
-        seasonal_amplitude * seasonal_term +
+        cold_mortality_slope * cold_excess_c +
         hydro_slope * hydro_excess +
         salinity_slope * salinity_excess;
 }

@@ -268,6 +268,99 @@ initial_state:
 
 ---
 
+# Timestepping
+
+The model operates on two distinct temporal scales that must be configured
+independently.
+
+## Outer forcing timestep
+
+The `dt_days` field in each entry of `forcing.steps` sets the duration of one
+forcing step — how often temperature, PAR, suspended sediment concentration,
+salinity, and tidal statistics are updated.  Typical choices range from one day
+(capturing synoptic weather variation) to one month (sufficient for long
+equilibrium runs).
+
+A forcing step does not need to equal the tidal period.  Processes that require
+sub-step tidal integration handle that internally (see below).
+
+## Inner hydrological substeps
+
+Within each forcing step, the `composite_water_level_model` evaluates water
+level at `water_level_substeps_per_step` evenly-spaced time points and counts
+what fraction are above the marsh surface.  This `inundation_fraction` (and the
+derived mean water depth and inundation duration) is then used by the
+**GPP, salinity, and ET models**.
+
+The key constraint is the number of substeps per tidal cycle:
+
+```
+substeps_per_tidal_cycle ≈ water_level_substeps_per_step
+                            × tidal_period_hours / (24 × dt_days)
+```
+
+For a high-marsh site that is inundated for only 15–25 % of each tidal cycle,
+at least **~20 substeps per tidal cycle** are recommended to estimate the
+inundation fraction accurately.  With only 4 substeps per cycle the estimated
+fraction is coarsely quantised (0 %, 25 %, 50 %, …) and can introduce
+significant bias in GPP and salinity.
+
+For a monthly forcing step (dt_days ≈ 30.4) this requires roughly
+`water_level_substeps_per_step ≈ 20 × 30.4 × 24 / 12.42 ≈ 1175`.
+The historic default of 240 corresponds to ~4 substeps per cycle and
+is too coarse for high-marsh simulations.
+
+## Deposition model: independent per-cycle integration
+
+The `edge_distance_deposition` model does **not** use
+`water_level_substeps_per_step`.  Instead, it:
+
+1. Loops over every individual tidal cycle within the forcing step
+   (`n_cycles = round(24 × dt_days / tidal_period_hours)`).
+2. Samples 60 points within each cycle to find the cycle's min and max
+   water level (the *cycle envelope*).
+3. Computes the inundation fraction for that cycle analytically using the
+   exact arcsine formula for a sinusoidal tide:
+
+   ```
+   f = 0.5 − arcsin((z − mean) / amplitude) / π
+   ```
+
+This is exact regardless of how coarse the outer forcing step is, and correctly
+handles high-marsh sites that are barely inundated.  The `water_level_substeps_per_step`
+parameter has no effect on deposition computed by this model.
+
+## Parameter summary
+
+| Parameter | Where set | Effect |
+|-----------|-----------|--------|
+| `dt_days` in `forcing.steps` | forcing YAML | Duration of each forcing step; controls how often climate/tidal statistics update |
+| `water_level_substeps_per_step` | `parameters` block | Number of time samples within each forcing step used by the water level model to compute inundation fraction for GPP, salinity, ET |
+
+## Rule of thumb
+
+For a mid-marsh site (~20 % inundation fraction per tide), target at least
+20 substeps per tidal cycle.  Scale `water_level_substeps_per_step`
+proportionally with `dt_days`:
+
+```
+water_level_substeps_per_step ≈ 20 × dt_days × 24 / tidal_period_hours
+```
+
+For a semidiurnal (12.42 h) site:
+
+| dt_days | Recommended substeps |
+|---------|----------------------|
+| 1       | 39                   |
+| 7       | 271                  |
+| 30.4    | 1175                 |
+| 91.3    | 3526                 |
+
+The sensitivity scripts in `sensitivity/` quantify the effect of both
+parameters on a 50-year simulation.
+
+---
+
 # Available process models
 
 The code currently supports the following model names.
