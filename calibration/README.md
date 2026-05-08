@@ -424,25 +424,25 @@ For each site the calibrator writes two files to `calibration_runs/`:
 cd calibration/
 
 # Calibrate all five sites with default settings:
-python calibrate_ni.py
+python3 calibrate_ni.py
 
 # One site only:
-python calibrate_ni.py --site gi_hm_c
+python3 calibrate_ni.py --site gi_hm_c
 
 # Differential evolution (more thorough):
-python calibrate_ni.py --site gi_hm_c --method de
+python3 calibrate_ni.py --site gi_hm_c --method de
 
 # More Nelder-Mead restarts, suppress per-evaluation output:
-python calibrate_ni.py --n-starts 5 --quiet
+python3 calibrate_ni.py --n-starts 5 --quiet
 
 # ANPP-only calibration (no biomass term):
-python calibrate_ni.py --biomass-weight 0
+python3 calibrate_ni.py --biomass-weight 0
 
 # Upweight the biomass seasonal cycle (e.g. 2× vs ANPP):
-python calibrate_ni.py --biomass-weight 2.0
+python3 calibrate_ni.py --biomass-weight 2.0
 
 # Custom model binary:
-python calibrate_ni.py --cli /path/to/marsh_cli
+python3 calibrate_ni.py --cli /path/to/marsh_cli
 ```
 
 After all sites are done a summary table is printed:
@@ -497,23 +497,23 @@ g m⁻² (× 1000) to match the LTER units before plotting.
 cd calibration/
 
 # Full dashboard for a calibrated run:
-python plot_timeseries.py \
+python3 plot_timeseries.py \
     --nc calibration_runs/ni_gi_hm_c_best.nc \
     --site GI --location HM --treatment C
 
 # Save to a file instead of showing interactively:
-python plot_timeseries.py \
+python3 plot_timeseries.py \
     --nc calibration_runs/ni_gi_hm_c_best.nc \
     --site GI --location HM --treatment C \
     --out viz/figures/ni_gi_hm_c_dashboard.png
 
 # Plot one or more specific variables:
-python plot_timeseries.py \
+python3 plot_timeseries.py \
     --nc calibration_runs/ni_gi_hm_c_best.nc \
     --variable aboveground_biomass_kg_m2 surface_elevation
 
 # List available variable names in a NetCDF file:
-python plot_timeseries.py \
+python3 plot_timeseries.py \
     --nc calibration_runs/ni_gi_hm_c_best.nc --list-vars
 ```
 

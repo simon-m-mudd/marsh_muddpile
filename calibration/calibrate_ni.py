@@ -86,11 +86,11 @@ CHECKPOINT_DIR = "calibration_runs/checkpoints"
 # Each entry: elevation_m and distance_m are the plot-level inputs.
 # SITE / LOCATION / TREATMENT identify which LTER rows to use as calibration target.
 NI_SITES: Dict[str, dict] = {
-    "gi_hm_c":  dict(site="GI", location="HM", treatment="C",  elevation_m=0.6, distance_m=30.0),
-    "gi_hm_np": dict(site="GI", location="HM", treatment="NP", elevation_m=0.6, distance_m=30.0),
-    "gi_lm_c":  dict(site="GI", location="LM", treatment="C",  elevation_m=0.3, distance_m=30.0),
-    "ol_hm_c":  dict(site="OL", location="HM", treatment="C",  elevation_m=0.6, distance_m=30.0),
-    "ol_lm_c":  dict(site="OL", location="LM", treatment="C",  elevation_m=0.3, distance_m=30.0),
+    "gi_hm_c":  dict(site="GI", location="HM", treatment="C",  elevation_m=0.50, distance_m=62.0),
+    "gi_hm_np": dict(site="GI", location="HM", treatment="NP", elevation_m=0.50, distance_m=62.0),
+    "gi_lm_c":  dict(site="GI", location="LM", treatment="C",  elevation_m=0.20, distance_m=42.0),
+    "ol_hm_c":  dict(site="OL", location="HM", treatment="C",  elevation_m=0.45, distance_m=33.0),
+    "ol_lm_c":  dict(site="OL", location="LM", treatment="C",  elevation_m=0.25, distance_m=33.0),
 }
 
 PARAM_NAMES: List[str] = [
@@ -235,7 +235,7 @@ class SiteCalibrator:
         os.makedirs(OPT_RUN_DIR, exist_ok=True)
         os.makedirs(OUT_DIR, exist_ok=True)
 
-    def _make_config(self, run_id: str) -> PlotConfig:
+    def _make_config(self, run_id: str, output_dir: str = OPT_RUN_DIR) -> PlotConfig:
         return PlotConfig(
             site_name="north_inlet",
             plot_id=run_id,
@@ -244,7 +244,9 @@ class SiteCalibrator:
             tides=north_inlet_default_tides(),
             met=north_inlet_default_met(),
             n_years=RUN_YEARS,
-            output_dir=OPT_RUN_DIR,
+            sea_level_rise_m_yr=0.006,
+            mean_aboveground_biomass_kg_m2=self.obs_biomass_mean / 1000.0,
+            output_dir=output_dir,
         )
 
     def objective(self, log_params: np.ndarray) -> float:
@@ -425,16 +427,7 @@ class SiteCalibrator:
         final_run_id = f"ni_{self.site_key}_best"
         yaml_path = os.path.join(OUT_DIR, f"{final_run_id}.yaml")
         nc_path = yaml_path.replace(".yaml", ".nc")
-        config_final = PlotConfig(
-            site_name="north_inlet",
-            plot_id=final_run_id,
-            surface_elevation_m=self.site_info["elevation_m"],
-            distance_from_creek_m=self.site_info["distance_m"],
-            tides=north_inlet_default_tides(),
-            met=north_inlet_default_met(),
-            n_years=RUN_YEARS,
-            output_dir=OUT_DIR,
-        )
+        config_final = self._make_config(final_run_id, output_dir=OUT_DIR)
         write_config(config_final, yaml_path, extra_parameters=best_params)
         run_model(yaml_path, cli_binary=self.cli_binary, silent=True)
         mod_anpp = mean_annual_anpp_g_m2_yr(nc_path, skip_spinup_years=SKIP_SPINUP)

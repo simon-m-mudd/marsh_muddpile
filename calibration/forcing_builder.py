@@ -63,11 +63,14 @@ def build_monthly_forcing(config: PlotConfig) -> List[dict]:
             ),
         )
 
+        year = i / 12.0
+        slr = year * config.sea_level_rise_m_yr
+
         step = {
             "model_time_days": round(model_time_days, 4),
             "dt_days": round(_DT_DAYS, 4),
-            "mean_sea_level": tides.mean_sea_level_m,
-            "mean_high_tide": tides.mean_high_tide_m,
+            "mean_sea_level": round(tides.mean_sea_level_m + slr, 6),
+            "mean_high_tide": round(tides.mean_high_tide_m + slr, 6),
             "tidal_amplitude": tides.tidal_amplitude_m,
             "tidal_period_hours": tides.tidal_period_hours,
             "temperature": round(temperature, 3),

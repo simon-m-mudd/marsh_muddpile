@@ -12,6 +12,7 @@
 # a dict to write_config(extra_parameters=...).
 
 from __future__ import annotations
+import math
 import os
 from typing import Any, Dict, List, Optional
 
@@ -244,6 +245,65 @@ _DEFAULT_MATERIALS = [
 ]
 
 
+def build_initial_column_layers(config: PlotConfig) -> List[dict]:
+    """Build a realistic 1-m organic sediment column as a list of layer dicts.
+
+    Profile (each 5 cm layer, depth measured from surface downward):
+      - Refractory organic : 10 % of solid volume throughout
+      - Labile organic     : exponential decay, 10 % at surface,
+                             e-folding depth 10 cm (≈0.5 % at 30 cm)
+      - Silt               : remainder of solid volume
+      - Roots              : total = mean_abg_biomass × root_to_shoot_ratio,
+                             distributed with exponential profile (e-fold 10 cm)
+    """
+    n = config.initial_column_n_layers
+    h = config.initial_column_layer_thickness_m
+    phi = config.initial_column_porosity
+    solid_vol = (1.0 - phi) * h          # m³ solid per m² per layer
+
+    rho_silt    = 2600.0
+    rho_refrac  = 1400.0
+    rho_labile  = 1200.0
+    rho_roots   = 1100.0
+
+    root_efolding_m = 0.10
+    total_roots = (config.mean_aboveground_biomass_kg_m2
+                   * config.initial_root_to_shoot_ratio)
+
+    # Unnormalized root weights per layer (midpoint depth)
+    root_weights = [
+        math.exp(-(i + 0.5) * h / root_efolding_m)
+        for i in range(n)
+    ]
+    total_weight = sum(root_weights)
+
+    layers = []
+    for i in range(n):
+        depth_mid = (i + 0.5) * h
+        top_elev  = config.surface_elevation_m - i * h
+
+        refrac_frac  = 0.10
+        labile_frac  = 0.10 * math.exp(-depth_mid / root_efolding_m)
+        mineral_frac = max(0.0, 1.0 - refrac_frac - labile_frac)
+
+        root_mass = total_roots * root_weights[i] / total_weight
+
+        layers.append({
+            "top_elevation_m": round(top_elev, 4),
+            "thickness_m": h,
+            "porosity": phi,
+            "age_days": 0.0,
+            "mass_kg_m2": {
+                "silt":               round(rho_silt   * mineral_frac * solid_vol, 4),
+                "refractory_organic": round(rho_refrac * refrac_frac  * solid_vol, 4),
+                "labile_organic":     round(rho_labile * labile_frac  * solid_vol, 6),
+                "roots":              round(root_mass, 6),
+            },
+        })
+
+    return layers
+
+
 def _tidal_constituent_parameters(config: PlotConfig) -> Dict[str, Any]:
     """Return the harmonic constituent entries for the parameters block."""
     t = config.tides
@@ -297,12 +357,11 @@ def write_config(
     if extra_parameters:
         parameters.update(extra_parameters)
 
-    # The initial sediment column sits below the measured surface elevation.
-    # A single thick base layer fills from
-    #   (surface_elevation_m - initial_column_thickness_m)
-    # up to surface_elevation_m.
-    base_top = config.surface_elevation_m
-    base_bottom = config.surface_elevation_m - config.initial_column_thickness_m
+    initial_layers = build_initial_column_layers(config)
+
+    lai_per_kg = _DEFAULT_PARAMETERS["vegetation_lai_per_kg_m2"]
+    abg_kg = config.mean_aboveground_biomass_kg_m2
+    blg_kg = abg_kg * config.initial_root_to_shoot_ratio
 
     doc = {
         "simulation": {
@@ -329,21 +388,13 @@ def write_config(
             "steps": forcing_steps,
         },
         "initial_state": {
-            "layers": [
-                {
-                    "top_elevation_m": base_top,
-                    "thickness_m": config.initial_column_thickness_m,
-                    "porosity": config.initial_porosity,
-                    "age_days": 0.0,
-                    "fill_material": config.initial_fill_material,
-                }
-            ]
+            "layers": initial_layers,
         },
         "initial_ecohydrology_state": {
             "root_zone_salinity_ppt": config.initial_salinity_ppt,
-            "aboveground_biomass_kg_m2": config.initial_aboveground_biomass_kg_m2,
-            "belowground_biomass_kg_m2": config.initial_belowground_biomass_kg_m2,
-            "lai": config.initial_lai,
+            "aboveground_biomass_kg_m2": round(abg_kg, 4),
+            "belowground_biomass_kg_m2": round(blg_kg, 4),
+            "lai": round(abg_kg * lai_per_kg, 4),
             "litter_kg_m2": 0.0,
         },
         "output": {

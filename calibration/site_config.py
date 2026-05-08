@@ -96,16 +96,31 @@ class PlotConfig:
     # Run duration
     n_years: int = 10
 
-    # Initial soil column
-    initial_column_thickness_m: float = 0.50
-    initial_porosity: float = 0.40
-    initial_fill_material: str = "sand"
+    # Sea level rise rate (m/yr).  Applied as a linear trend to mean_sea_level
+    # and mean_high_tide in the forcing steps.  Set to site-specific value;
+    # e.g. 0.006 for North Inlet, SC (NOAA gauge 8661070).
+    sea_level_rise_m_yr: float = 0.0
 
-    # Initial ecophysiology state
+    # Initial soil column — built as a multi-layer organic profile
+    # (see yaml_writer.build_initial_column_layers).
+    # n_layers × layer_thickness_m = total column depth (default 1 m).
+    initial_column_n_layers: int = 20
+    initial_column_layer_thickness_m: float = 0.05
+    initial_column_porosity: float = 0.60
+
+    # Mean annual aboveground biomass (kg m-2) for this plot, derived from
+    # LTER observations.  Used to:
+    #   (a) set initial_aboveground_biomass_kg_m2 in the ecohydrology state, and
+    #   (b) distribute root mass (root_to_shoot_ratio × this value) through
+    #       the initial sediment column.
+    mean_aboveground_biomass_kg_m2: float = 0.30
+
+    # Root : shoot ratio for initial column root loading.
+    initial_root_to_shoot_ratio: float = 3.0
+
+    # Initial ecophysiology state (derived from mean_aboveground_biomass_kg_m2
+    # if not explicitly overridden; set in yaml_writer.write_config).
     initial_salinity_ppt: float = 20.0
-    initial_aboveground_biomass_kg_m2: float = 0.05
-    initial_belowground_biomass_kg_m2: float = 0.20
-    initial_lai: float = 1.0
 
     # Output
     output_dir: str = "calibration_runs"
