@@ -1,0 +1,197 @@
+{
+  "site": "gce",
+  "label": "GCE, Sapelo Island GA",
+  "station": "8670870",
+  "datums": {
+    "STND": 0.0,
+    "MHHW": 3.353,
+    "MHW": 3.239,
+    "DTL": 2.209,
+    "MTL": 2.185,
+    "MSL": 2.23,
+    "MLW": 1.131,
+    "MLLW": 1.066,
+    "GT": 2.287,
+    "MN": 2.108,
+    "DHQ": 0.114,
+    "DLQ": 0.065,
+    "HWI": 0.515,
+    "LWI": 6.895,
+    "NAVD88": 2.301
+  },
+  "harmonics": {
+    "M2": {
+      "amplitude_m": 1.01,
+      "phase_deg": 17.5
+    },
+    "S2": {
+      "amplitude_m": 0.16,
+      "phase_deg": 45.3
+    },
+    "N2": {
+      "amplitude_m": 0.227,
+      "phase_deg": 2.1
+    },
+    "K1": {
+      "amplitude_m": 0.109,
+      "phase_deg": 200.0
+    },
+    "M4": {
+      "amplitude_m": 0.043,
+      "phase_deg": 241.4
+    },
+    "O1": {
+      "amplitude_m": 0.08,
+      "phase_deg": 205.2
+    },
+    "M6": {
+      "amplitude_m": 0.007,
+      "phase_deg": 76.0
+    },
+    "MK3": {
+      "amplitude_m": 0.01,
+      "phase_deg": 37.9
+    },
+    "S4": {
+      "amplitude_m": 0.007,
+      "phase_deg": 43.3
+    },
+    "MN4": {
+      "amplitude_m": 0.02,
+      "phase_deg": 234.7
+    },
+    "NU2": {
+      "amplitude_m": 0.045,
+      "phase_deg": 357.4
+    },
+    "S6": {
+      "amplitude_m": 0.001,
+      "phase_deg": 278.7
+    },
+    "MU2": {
+      "amplitude_m": 0.031,
+      "phase_deg": 48.3
+    },
+    "2N2": {
+      "amplitude_m": 0.031,
+      "phase_deg": 351.7
+    },
+    "OO1": {
+      "amplitude_m": 0.004,
+      "phase_deg": 232.0
+    },
+    "LAM2": {
+      "amplitude_m": 0.02,
+      "phase_deg": 11.6
+    },
+    "S1": {
+      "amplitude_m": 0.02,
+      "phase_deg": 168.5
+    },
+    "M1": {
+      "amplitude_m": 0.003,
+      "phase_deg": 231.6
+    },
+    "J1": {
+      "amplitude_m": 0.007,
+      "phase_deg": 220.2
+    },
+    "MM": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "SSA": {
+      "amplitude_m": 0.086,
+      "phase_deg": 52.9
+    },
+    "SA": {
+      "amplitude_m": 0.109,
+      "phase_deg": 174.2
+    },
+    "MSF": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "MF": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "RHO": {
+      "amplitude_m": 0.003,
+      "phase_deg": 206.1
+    },
+    "Q1": {
+      "amplitude_m": 0.016,
+      "phase_deg": 203.4
+    },
+    "T2": {
+      "amplitude_m": 0.018,
+      "phase_deg": 25.9
+    },
+    "R2": {
+      "amplitude_m": 0.015,
+      "phase_deg": 291.0
+    },
+    "2Q1": {
+      "amplitude_m": 0.002,
+      "phase_deg": 167.6
+    },
+    "P1": {
+      "amplitude_m": 0.037,
+      "phase_deg": 198.6
+    },
+    "2SM2": {
+      "amplitude_m": 0.004,
+      "phase_deg": 88.6
+    },
+    "M3": {
+      "amplitude_m": 0.022,
+      "phase_deg": 153.4
+    },
+    "L2": {
+      "amplitude_m": 0.058,
+      "phase_deg": 9.4
+    },
+    "2MK3": {
+      "amplitude_m": 0.011,
+      "phase_deg": 71.1
+    },
+    "K2": {
+      "amplitude_m": 0.039,
+      "phase_deg": 45.1
+    },
+    "M8": {
+      "amplitude_m": 0.002,
+      "phase_deg": 242.8
+    },
+    "MS4": {
+      "amplitude_m": 0.022,
+      "phase_deg": 272.9
+    }
+  },
+  "tide_record": {
+    "mean_sea_level_m": 0.0,
+    "mean_high_tide_m": 1.009,
+    "tidal_amplitude_m": 1.054,
+    "tidal_period_hours": 12.42,
+    "creek_salinity_ppt": 25.0,
+    "M2_amplitude_m": 1.01,
+    "M2_phase_deg": 17.5,
+    "S2_amplitude_m": 0.16,
+    "S2_phase_deg": 45.3,
+    "N2_amplitude_m": 0.227,
+    "N2_phase_deg": 2.1,
+    "K1_amplitude_m": 0.109,
+    "K1_phase_deg": 200.0,
+    "O1_amplitude_m": 0.08,
+    "O1_phase_deg": 205.2
+  },
+  "met_params": {
+    "temperature_mean_c": 20.28,
+    "temperature_amplitude_c": 7.96,
+    "temperature_peak_day": 204.3,
+    "par_mean_umol_m2_d": 35685717.0,
+    "par_amplitude_umol_m2_d": 14122451.0,
+    "par_peak_day": 164.9
+  }
+}

@@ -1,0 +1,197 @@
+{
+  "site": "pie",
+  "label": "Plum Island Estuary, MA",
+  "station": "8419870",
+  "datums": {
+    "STND": 0.0,
+    "MHHW": 3.403,
+    "MHW": 3.274,
+    "DTL": 2.047,
+    "MTL": 2.031,
+    "MSL": 2.05,
+    "MLW": 0.788,
+    "MLLW": 0.691,
+    "GT": 2.711,
+    "MN": 2.487,
+    "DHQ": 0.128,
+    "DLQ": 0.096,
+    "HWI": 3.917,
+    "LWI": 10.038,
+    "NAVD88": 2.127
+  },
+  "harmonics": {
+    "M2": {
+      "amplitude_m": 1.214,
+      "phase_deg": 110.9
+    },
+    "S2": {
+      "amplitude_m": 0.177,
+      "phase_deg": 147.2
+    },
+    "N2": {
+      "amplitude_m": 0.278,
+      "phase_deg": 81.3
+    },
+    "K1": {
+      "amplitude_m": 0.132,
+      "phase_deg": 207.0
+    },
+    "M4": {
+      "amplitude_m": 0.019,
+      "phase_deg": 1.4
+    },
+    "O1": {
+      "amplitude_m": 0.106,
+      "phase_deg": 189.1
+    },
+    "M6": {
+      "amplitude_m": 0.004,
+      "phase_deg": 166.3
+    },
+    "MK3": {
+      "amplitude_m": 0.003,
+      "phase_deg": 222.1
+    },
+    "S4": {
+      "amplitude_m": 0.001,
+      "phase_deg": 98.3
+    },
+    "MN4": {
+      "amplitude_m": 0.01,
+      "phase_deg": 351.8
+    },
+    "NU2": {
+      "amplitude_m": 0.056,
+      "phase_deg": 88.8
+    },
+    "S6": {
+      "amplitude_m": 0.001,
+      "phase_deg": 195.6
+    },
+    "MU2": {
+      "amplitude_m": 0.003,
+      "phase_deg": 61.3
+    },
+    "2N2": {
+      "amplitude_m": 0.036,
+      "phase_deg": 45.6
+    },
+    "OO1": {
+      "amplitude_m": 0.004,
+      "phase_deg": 217.7
+    },
+    "LAM2": {
+      "amplitude_m": 0.023,
+      "phase_deg": 151.4
+    },
+    "S1": {
+      "amplitude_m": 0.007,
+      "phase_deg": 174.4
+    },
+    "M1": {
+      "amplitude_m": 0.007,
+      "phase_deg": 218.4
+    },
+    "J1": {
+      "amplitude_m": 0.006,
+      "phase_deg": 213.4
+    },
+    "MM": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "SSA": {
+      "amplitude_m": 0.015,
+      "phase_deg": 108.0
+    },
+    "SA": {
+      "amplitude_m": 0.032,
+      "phase_deg": 136.2
+    },
+    "MSF": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "MF": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "RHO": {
+      "amplitude_m": 0.005,
+      "phase_deg": 179.8
+    },
+    "Q1": {
+      "amplitude_m": 0.016,
+      "phase_deg": 180.5
+    },
+    "T2": {
+      "amplitude_m": 0.015,
+      "phase_deg": 124.5
+    },
+    "R2": {
+      "amplitude_m": 0.004,
+      "phase_deg": 9.7
+    },
+    "2Q1": {
+      "amplitude_m": 0.001,
+      "phase_deg": 39.8
+    },
+    "P1": {
+      "amplitude_m": 0.045,
+      "phase_deg": 204.2
+    },
+    "2SM2": {
+      "amplitude_m": 0.005,
+      "phase_deg": 98.8
+    },
+    "M3": {
+      "amplitude_m": 0.001,
+      "phase_deg": 124.8
+    },
+    "L2": {
+      "amplitude_m": 0.071,
+      "phase_deg": 132.0
+    },
+    "2MK3": {
+      "amplitude_m": 0.006,
+      "phase_deg": 209.6
+    },
+    "K2": {
+      "amplitude_m": 0.047,
+      "phase_deg": 146.1
+    },
+    "M8": {
+      "amplitude_m": 0.001,
+      "phase_deg": 281.7
+    },
+    "MS4": {
+      "amplitude_m": 0.007,
+      "phase_deg": 54.6
+    }
+  },
+  "tide_record": {
+    "mean_sea_level_m": 0.0,
+    "mean_high_tide_m": 1.224,
+    "tidal_amplitude_m": 1.243,
+    "tidal_period_hours": 12.42,
+    "creek_salinity_ppt": 22.0,
+    "M2_amplitude_m": 1.214,
+    "M2_phase_deg": 110.9,
+    "S2_amplitude_m": 0.177,
+    "S2_phase_deg": 147.2,
+    "N2_amplitude_m": 0.278,
+    "N2_phase_deg": 81.3,
+    "K1_amplitude_m": 0.132,
+    "K1_phase_deg": 207.0,
+    "O1_amplitude_m": 0.106,
+    "O1_phase_deg": 189.1
+  },
+  "met_params": {
+    "temperature_mean_c": 9.91,
+    "temperature_amplitude_c": 12.0,
+    "temperature_peak_day": 208.9,
+    "par_mean_umol_m2_d": 29073008.0,
+    "par_amplitude_umol_m2_d": 16267152.0,
+    "par_peak_day": 169.5
+  }
+}

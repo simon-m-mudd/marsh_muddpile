@@ -1,0 +1,197 @@
+{
+  "site": "ni",
+  "label": "North Inlet, SC",
+  "station": "8661070",
+  "datums": {
+    "STND": 0.0,
+    "MHHW": 10.635,
+    "MHW": 10.516,
+    "DTL": 9.782,
+    "MTL": 9.751,
+    "MSL": 9.754,
+    "MLW": 8.985,
+    "MLLW": 8.928,
+    "GT": 1.707,
+    "MN": 1.531,
+    "DHQ": 0.119,
+    "DLQ": 0.057,
+    "HWI": 12.31,
+    "LWI": 6.17,
+    "NAVD88": 9.89
+  },
+  "harmonics": {
+    "M2": {
+      "amplitude_m": 0.73,
+      "phase_deg": 357.9
+    },
+    "S2": {
+      "amplitude_m": 0.123,
+      "phase_deg": 20.3
+    },
+    "N2": {
+      "amplitude_m": 0.171,
+      "phase_deg": 340.6
+    },
+    "K1": {
+      "amplitude_m": 0.102,
+      "phase_deg": 187.6
+    },
+    "M4": {
+      "amplitude_m": 0.009,
+      "phase_deg": 257.0
+    },
+    "O1": {
+      "amplitude_m": 0.076,
+      "phase_deg": 191.4
+    },
+    "M6": {
+      "amplitude_m": 0.003,
+      "phase_deg": 315.8
+    },
+    "MK3": {
+      "amplitude_m": 0.004,
+      "phase_deg": 78.2
+    },
+    "S4": {
+      "amplitude_m": 0.007,
+      "phase_deg": 33.1
+    },
+    "MN4": {
+      "amplitude_m": 0.007,
+      "phase_deg": 274.4
+    },
+    "NU2": {
+      "amplitude_m": 0.033,
+      "phase_deg": 338.5
+    },
+    "S6": {
+      "amplitude_m": 0.001,
+      "phase_deg": 129.1
+    },
+    "MU2": {
+      "amplitude_m": 0.025,
+      "phase_deg": 350.3
+    },
+    "2N2": {
+      "amplitude_m": 0.024,
+      "phase_deg": 331.2
+    },
+    "OO1": {
+      "amplitude_m": 0.005,
+      "phase_deg": 212.3
+    },
+    "LAM2": {
+      "amplitude_m": 0.008,
+      "phase_deg": 8.5
+    },
+    "S1": {
+      "amplitude_m": 0.015,
+      "phase_deg": 143.5
+    },
+    "M1": {
+      "amplitude_m": 0.004,
+      "phase_deg": 203.1
+    },
+    "J1": {
+      "amplitude_m": 0.008,
+      "phase_deg": 184.5
+    },
+    "MM": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "SSA": {
+      "amplitude_m": 0.066,
+      "phase_deg": 52.2
+    },
+    "SA": {
+      "amplitude_m": 0.1,
+      "phase_deg": 172.9
+    },
+    "MSF": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "MF": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "RHO": {
+      "amplitude_m": 0.003,
+      "phase_deg": 174.3
+    },
+    "Q1": {
+      "amplitude_m": 0.016,
+      "phase_deg": 181.2
+    },
+    "T2": {
+      "amplitude_m": 0.012,
+      "phase_deg": 10.4
+    },
+    "R2": {
+      "amplitude_m": 0.007,
+      "phase_deg": 263.8
+    },
+    "2Q1": {
+      "amplitude_m": 0.004,
+      "phase_deg": 156.8
+    },
+    "P1": {
+      "amplitude_m": 0.032,
+      "phase_deg": 185.3
+    },
+    "2SM2": {
+      "amplitude_m": 0.004,
+      "phase_deg": 32.0
+    },
+    "M3": {
+      "amplitude_m": 0.019,
+      "phase_deg": 58.6
+    },
+    "L2": {
+      "amplitude_m": 0.023,
+      "phase_deg": 349.0
+    },
+    "2MK3": {
+      "amplitude_m": 0.003,
+      "phase_deg": 59.0
+    },
+    "K2": {
+      "amplitude_m": 0.031,
+      "phase_deg": 17.8
+    },
+    "M8": {
+      "amplitude_m": 0.0,
+      "phase_deg": 0.0
+    },
+    "MS4": {
+      "amplitude_m": 0.012,
+      "phase_deg": 246.5
+    }
+  },
+  "tide_record": {
+    "mean_sea_level_m": 0.0,
+    "mean_high_tide_m": 0.762,
+    "tidal_amplitude_m": 0.766,
+    "tidal_period_hours": 12.42,
+    "creek_salinity_ppt": 28.0,
+    "M2_amplitude_m": 0.73,
+    "M2_phase_deg": 357.9,
+    "S2_amplitude_m": 0.123,
+    "S2_phase_deg": 20.3,
+    "N2_amplitude_m": 0.171,
+    "N2_phase_deg": 340.6,
+    "K1_amplitude_m": 0.102,
+    "K1_phase_deg": 187.6,
+    "O1_amplitude_m": 0.076,
+    "O1_phase_deg": 191.4
+  },
+  "met_params": {
+    "temperature_mean_c": 18.92,
+    "temperature_amplitude_c": 8.46,
+    "temperature_peak_day": 202.8,
+    "par_mean_umol_m2_d": 34172288.0,
+    "par_amplitude_umol_m2_d": 14160082.0,
+    "par_peak_day": 164.8
+  }
+}
