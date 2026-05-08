@@ -331,17 +331,26 @@ void marsh_decay_model::apply_decay(
                 continue;
             }
 
-            const double base_multiplier =
-                compute_decay_multiplier(
-                    decay_rate_per_day,
-                    forcing.dt_days,
-                    parameters);
-
             const double pool_modifier =
                 compute_pool_modifier(material, modifiers);
 
+            // pool_modifier scales the effective decay rate (modifier = 1 is
+            // baseline aerobic rate; < 1 slows decay under anoxia or salinity).
+            // It must be applied to the rate before computing the survival
+            // fraction, not multiplied with the survival fraction afterward.
+            // Multiplying survival fractions is mathematically wrong:
+            //   exp(-k*dt) * m  !=  exp(-k*m*dt)
+            // and turns a modest rate reduction into catastrophic mass loss
+            // for slow-decaying pools (e.g. refractory with k=0.001 d-1 and
+            // m=0.59 would give 41 % decay per day instead of 0.06 %).
+            const double effective_decay_rate_per_day =
+                decay_rate_per_day * pool_modifier;
+
             const double combined_multiplier =
-                std::max(0.0, base_multiplier * pool_modifier);
+                compute_decay_multiplier(
+                    effective_decay_rate_per_day,
+                    forcing.dt_days,
+                    parameters);
 
             mass(layer_index, material_index) =
                 std::max(0.0, current_mass * combined_multiplier);

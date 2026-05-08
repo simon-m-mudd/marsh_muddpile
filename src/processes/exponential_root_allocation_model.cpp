@@ -125,23 +125,16 @@ Eigen::ArrayXXd exponential_root_allocation_model::compute_root_mass_change(
             const double root_delta = target_root_mass - current_root_mass;
             delta_mass(layer_index, root_material_index) = root_delta;
 
-            // When the live-root standing stock shrinks, route the removed mass
-            // to organic pools in the same layer so that volume (and hence surface
-            // elevation) is preserved through the seasonal root-turnover cycle.
-            if (root_delta < 0.0)
-            {
-                const double converted = -root_delta;
-                if (labile_material_index >= 0)
-                {
-                    delta_mass(layer_index, labile_material_index) +=
-                        safe_labile_fraction * converted;
-                }
-                if (refractory_material_index >= 0)
-                {
-                    delta_mass(layer_index, refractory_material_index) +=
-                        safe_refractory_fraction * converted;
-                }
-            }
+            // Root profile redistribution is mass-neutral with respect to
+            // organic pools.  Dead root carbon enters labile/refractory only
+            // through the explicit belowground mortality flux below (Route 2).
+            // Adding the standing-stock decrease here as well would double-count
+            // mortality when biomass is declining: the ODE already incorporates
+            // mortality into the new belowground_biomass, so route_delta already
+            // reflects (growth - mortality).  Route 2 then adds the gross
+            // mortality flux to organic, giving the correct column mass balance:
+            //   root_delta + mortality_flux = (growth - mortality) + mortality
+            //                               = growth  (new mass from NPP) ✓
         }
     }
 
