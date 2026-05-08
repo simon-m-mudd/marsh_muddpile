@@ -104,12 +104,37 @@ else()
 endif()
 
 message(STATUS "Checking for NetCDF C++4")
-pkg_check_modules(NETCDF_CXX REQUIRED IMPORTED_TARGET netcdf-cxx4)
+pkg_check_modules(NETCDF_CXX IMPORTED_TARGET netcdf-cxx4)
 
-if(DEFINED NETCDF_CXX_VERSION)
-    message(STATUS "NetCDF C++4 found: ${NETCDF_CXX_VERSION}")
+if(NETCDF_CXX_FOUND)
+    message(STATUS "NetCDF C++4 found via pkg-config: ${NETCDF_CXX_VERSION}")
 else()
-    message(STATUS "NetCDF C++4 found")
+    # pkg-config .pc file absent (common with conda-forge builds).
+    # Fall back to searching for the library and header directly.
+    message(STATUS "netcdf-cxx4 .pc not found — trying manual search")
+
+    find_library(NETCDF_CXX_LIB
+        NAMES netcdf_c++4 netcdf-cxx4
+        HINTS ${CMAKE_PREFIX_PATH}/lib ENV CONDA_PREFIX PATH_SUFFIXES lib
+    )
+    find_path(NETCDF_CXX_INCLUDE
+        NAMES netcdf
+        HINTS ${CMAKE_PREFIX_PATH}/include ENV CONDA_PREFIX PATH_SUFFIXES include
+    )
+
+    if(NETCDF_CXX_LIB AND NETCDF_CXX_INCLUDE)
+        message(STATUS "NetCDF C++4 found: ${NETCDF_CXX_LIB}")
+        add_library(PkgConfig::NETCDF_CXX IMPORTED UNKNOWN)
+        set_target_properties(PkgConfig::NETCDF_CXX PROPERTIES
+            IMPORTED_LOCATION             "${NETCDF_CXX_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${NETCDF_CXX_INCLUDE}"
+        )
+    else()
+        message(FATAL_ERROR
+            "NetCDF C++4 not found.\n"
+            "Install it (e.g. 'mamba install -c conda-forge netcdf-cxx4') "
+            "and re-run cmake with -DCMAKE_PREFIX_PATH=\$CONDA_PREFIX")
+    endif()
 endif()
 
 # ------------------------------------------------------------------------------
