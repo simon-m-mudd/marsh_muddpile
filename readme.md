@@ -103,6 +103,51 @@ If you want OpenMP support, a standard GCC toolchain is usually sufficient, but 
 sudo apt-get install g++
 ```
 
+## Installing in a conda environment
+
+If you do not have root access, or prefer to keep dependencies isolated, all required libraries are available through [conda-forge](https://conda-forge.org/).
+
+### Required conda packages
+
+Install everything into your environment with:
+
+```bash
+mamba install -c conda-forge cmake eigen yaml-cpp libnetcdf netcdf-cxx4 compilers
+```
+
+Or with plain conda:
+
+```bash
+conda install -c conda-forge cmake eigen yaml-cpp libnetcdf netcdf-cxx4 compilers
+```
+
+The `compilers` metapackage provides a GCC C++ compiler pinned to the conda-forge toolchain. If your system compiler is already C++17-capable you can omit it.
+
+### Setting the pkg-config path
+
+CMake locates NetCDF via `pkg-config`. After activating your environment you need to make sure `pkg-config` can find the conda-installed `.pc` files:
+
+```bash
+export PKG_CONFIG_PATH=$CONDA_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH
+```
+
+To make this permanent, add that line to your `~/.bashrc` (or whichever shell init file your cluster uses). You can verify it is working with:
+
+```bash
+pkg-config --modversion netcdf
+pkg-config --modversion netcdf-cxx4
+```
+
+### Building with conda dependencies
+
+Pass `CMAKE_PREFIX_PATH` so that CMake searches the active conda environment for all packages:
+
+```bash
+mkdir -p build && cd build
+cmake .. -DCMAKE_PREFIX_PATH=$CONDA_PREFIX
+cmake --build . -j
+```
+
 ---
 
 # Building the code

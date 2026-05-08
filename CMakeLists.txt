@@ -59,10 +59,15 @@ endif()
 # ------------------------------------------------------------------------------
 
 message(STATUS "Checking for Eigen3")
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+# Accept any Eigen3 version (3.x or 5.x both work; the version numbering
+# jumped between releases but the required API is stable across all of them).
+find_package(Eigen3 REQUIRED NO_MODULE)
 
 if(TARGET Eigen3::Eigen)
-    if(DEFINED EIGEN3_VERSION_STRING)
+    # Eigen3Config.cmake sets Eigen3_VERSION; older installs use EIGEN3_VERSION_STRING.
+    if(DEFINED Eigen3_VERSION)
+        message(STATUS "Eigen3 found: ${Eigen3_VERSION}")
+    elseif(DEFINED EIGEN3_VERSION_STRING)
         message(STATUS "Eigen3 found: ${EIGEN3_VERSION_STRING}")
     else()
         message(STATUS "Eigen3 found")
