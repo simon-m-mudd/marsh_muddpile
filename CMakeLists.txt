@@ -79,14 +79,16 @@ endif()
 message(STATUS "Checking for yaml-cpp")
 find_package(yaml-cpp REQUIRED)
 
-if(TARGET yaml-cpp)
-    if(DEFINED yaml-cpp_VERSION)
-        message(STATUS "yaml-cpp found: ${yaml-cpp_VERSION}")
-    else()
-        message(STATUS "yaml-cpp found")
-    endif()
+# yaml-cpp < 0.8 exports target "yaml-cpp";
+# yaml-cpp >= 0.8 exports target "yaml-cpp::yaml-cpp".
+# Create an alias so the rest of the build always uses "yaml-cpp::yaml-cpp".
+if(TARGET yaml-cpp::yaml-cpp)
+    message(STATUS "yaml-cpp found: ${yaml-cpp_VERSION}")
+elseif(TARGET yaml-cpp)
+    add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+    message(STATUS "yaml-cpp found: ${yaml-cpp_VERSION} (legacy target aliased)")
 else()
-    message(FATAL_ERROR "yaml-cpp was found by CMake, but target yaml-cpp is missing.")
+    message(FATAL_ERROR "yaml-cpp was found by CMake, but neither target yaml-cpp nor yaml-cpp::yaml-cpp is defined.")
 endif()
 
 message(STATUS "Checking for pkg-config")
@@ -177,7 +179,7 @@ target_include_directories(marsh_model_lib
 target_link_libraries(marsh_model_lib
     PUBLIC
         Eigen3::Eigen
-        yaml-cpp
+        yaml-cpp::yaml-cpp
         PkgConfig::NETCDF_C
         PkgConfig::NETCDF_CXX
 )
