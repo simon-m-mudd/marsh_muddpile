@@ -20,6 +20,8 @@
 #include "marsh_model/processes/compaction_model.hpp"
 #include "marsh_model/processes/decay_model.hpp"
 #include "marsh_model/processes/deposition_model.hpp"
+#include "marsh_model/processes/methane_model.hpp"
+#include "marsh_model/processes/porewater_chemistry_model.hpp"
 #include "marsh_model/processes/root_allocation_model.hpp"
 #include "marsh_model/processes/evapotranspiration_model.hpp"
 #include "marsh_model/processes/salinity_model.hpp"
@@ -61,5 +63,12 @@ public:
     static std::shared_ptr<vegetation_model> create_vegetation_model(
         const std::string& name);
 
+    // Returns nullptr if name == "none"; throws for unrecognised names.
+    static std::shared_ptr<porewater_chemistry_model>
+    create_porewater_chemistry_model(const std::string& name);
+
+    // Returns nullptr if name == "none"; throws for unrecognised names.
+    static std::shared_ptr<methane_model>
+    create_methane_model(const std::string& name);
 };
 }

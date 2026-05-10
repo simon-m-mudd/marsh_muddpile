@@ -325,28 +325,75 @@ longer capacity-saturated throughout the whole growing season.
 combination of the three key parameters that best reproduces the observed
 mean annual ANPP for each North Inlet site.
 
+### Required data files
+
+`calibrate_ni.py` reads two LTER CSV files via `lter_reader.py`.  Both must be
+present before the script is run:
+
+| File | Location | Contents |
+|------|----------|----------|
+| `NILTREB_plants_annual_productivity.csv` | `lter_data/edi.135.12/` | Annual ANPP (g m⁻² yr⁻¹) by site/location/treatment, 1984–2025 — primary calibration target |
+| `NILTREB_plants_aboveground_biomass_density.csv` | `lter_data/edi.135.12/` | Monthly aboveground biomass (g m⁻²) by plot — used for seasonal biomass term |
+
+Both files are part of the **edi.135.12** dataset (North Inlet LTREB aboveground
+plant data).  Download from the EDI data portal and unpack into
+`lter_data/edi.135.12/` before running calibration.
+
+The script also requires the compiled `marsh_cli` binary to be on `$PATH`, or
+its full path supplied via `--cli`.
+
 ### NI sites
 
 North Inlet has five calibration targets, distinguished by site, marsh zone,
-and treatment:
+and treatment.  Elevations are NAVD88 values measured at the plot locations;
+distances are to the nearest tidal creek.
 
-| Site key  | SITE | LOCATION | TREATMENT | Elevation (m) | Distance from channel (m) |
-|-----------|------|----------|-----------|:---:|:---:|
-| `gi_hm_c` | GI | HM | C | 0.6 | 30 |
-| `gi_hm_np`| GI | HM | NP | 0.6 | 30 |
-| `gi_lm_c` | GI | LM | C | 0.3 | 30 |
-| `ol_hm_c` | OL | HM | C | 0.6 | 30 |
-| `ol_lm_c` | OL | LM | C | 0.3 | 30 |
+| Site key   | SITE | LOCATION | TREATMENT | Elevation (m NAVD88) | Distance from creek (m) |
+|------------|------|----------|-----------|:--------------------:|:-----------------------:|
+| `gi_hm_c`  | GI   | HM       | C         | 0.50                 | 62                      |
+| `gi_hm_np` | GI   | HM       | NP        | 0.50                 | 62                      |
+| `gi_lm_c`  | GI   | LM       | C         | 0.20                 | 42                      |
+| `ol_hm_c`  | OL   | HM       | C         | 0.45                 | 33                      |
+| `ol_lm_c`  | OL   | LM       | C         | 0.25                 | 33                      |
 
-GI = Goat Island, OL = Oyster Landing.  HM = high marsh (~0.6 m above MSL),
-LM = low marsh (~0.3 m).  C = control, NP = nitrogen + phosphorous
-fertilisation.  Elevation and distance values are placeholders pending lidar
-survey; update `NI_SITES` in `calibrate_ni.py` once real values are available.
+GI = Goat Island, OL = Oyster Landing.  HM = high marsh, LM = low marsh.
+C = control, NP = nitrogen + phosphorus fertilisation.
 
 **Note on the NP site**: the model has no nutrient-limitation module, so
 calibrated parameters for `gi_hm_np` reflect a high-productivity vegetation
 regime rather than a mechanistic nutrient response.  Treat those parameter
 values separately from the control sites.
+
+### Sea level rise
+
+A linear sea level rise trend of **6 mm yr⁻¹** is applied to both
+`mean_sea_level` and `mean_high_tide` at every forcing step, derived from
+the long-term record at NOAA gauge 8661070 (North Inlet, SC).  Over the
+default 30-year run this raises the tidal frame by 0.18 m.
+
+Sea level rise is configured via `PlotConfig.sea_level_rise_m_yr` (set to
+`0.006` in `_make_config`) and applied in `forcing_builder.build_monthly_forcing`.
+To run without SLR (e.g. for a sensitivity test) pass `sea_level_rise_m_yr=0.0`
+when constructing the `PlotConfig`.
+
+### Initial sediment column
+
+Rather than a single sand layer, the model is initialised with a **1 m organic
+sediment column** (20 layers × 5 cm) built by `yaml_writer.build_initial_column_layers`.
+The profile is:
+
+| Material | Profile |
+|----------|---------|
+| Refractory organic | 10 % of solid volume throughout the full column |
+| Labile organic | Exponential decay: 10 % at surface, e-folding depth 10 cm (≈ 0.5 % at 30 cm) |
+| Silt | Remainder of solid volume |
+| Roots | Total = `mean_aboveground_biomass × root_to_shoot_ratio` (default 3×), distributed with the same 10 cm e-folding depth |
+
+The mean aboveground biomass used to set the initial root loading is derived
+from the observed monthly biomass record for that site (`obs_biomass_mean`
+in `SiteCalibrator.__init__`), converted from g m⁻² to kg m⁻².  This ensures
+the initial root mass is consistent with the long-term observed vegetation state
+at each plot rather than a generic placeholder.
 
 ### Optimised parameters and search bounds
 

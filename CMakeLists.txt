@@ -193,6 +193,8 @@ add_library(marsh_model_lib
 
     src/processes/distance_flushing_salinity_model.cpp
     src/processes/composite_water_level_model.cpp
+    src/processes/nh4_porewater_model.cpp
+    src/processes/sulfate_methane_model.cpp
 
 )
 

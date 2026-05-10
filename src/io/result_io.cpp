@@ -201,6 +201,9 @@ void result_io::write_netcdf(
             write_scalar_time_series("mean_inundation_depth_m", "m");
             write_scalar_time_series("mean_water_level_m", "m");
             write_scalar_time_series("max_water_level_m", "m");
+            write_scalar_time_series("surface_nh4_umol_L", "umol L-1");
+            write_scalar_time_series("surface_ch4_flux_umol_m2_s", "umol m-2 s-1");
+            write_scalar_time_series("surface_so4_umol_L", "umol L-1");
 
 
 
@@ -302,6 +305,18 @@ void result_io::write_netcdf(
                     n_snapshots * max_layers,
                     missing_value_double);
 
+                std::vector<double> layer_porewater_nh4(
+                    n_snapshots * max_layers,
+                    missing_value_double);
+
+                std::vector<double> layer_porewater_so4(
+                    n_snapshots * max_layers,
+                    missing_value_double);
+
+                std::vector<double> layer_porewater_ch4(
+                    n_snapshots * max_layers,
+                    missing_value_double);
+
                 std::vector<double> layer_mass(
                     n_snapshots * max_layers * n_materials,
                     0.0);
@@ -313,6 +328,18 @@ void result_io::write_netcdf(
 
                     const std::size_t n_layers =
                         static_cast<std::size_t>(state.n_layers());
+
+                    const bool has_nh4 =
+                        state.porewater_nh4().size() ==
+                        static_cast<int>(n_layers);
+
+                    const bool has_so4 =
+                        state.porewater_so4().size() ==
+                        static_cast<int>(n_layers);
+
+                    const bool has_ch4 =
+                        state.porewater_ch4().size() ==
+                        static_cast<int>(n_layers);
 
                     for (std::size_t l = 0; l < n_layers; ++l)
                     {
@@ -330,6 +357,24 @@ void result_io::write_netcdf(
 
                         layer_age[flat_index] =
                             state.layer_age()(static_cast<int>(l));
+
+                        if (has_nh4)
+                        {
+                            layer_porewater_nh4[flat_index] =
+                                state.porewater_nh4()(static_cast<int>(l));
+                        }
+
+                        if (has_so4)
+                        {
+                            layer_porewater_so4[flat_index] =
+                                state.porewater_so4()(static_cast<int>(l));
+                        }
+
+                        if (has_ch4)
+                        {
+                            layer_porewater_ch4[flat_index] =
+                                state.porewater_ch4()(static_cast<int>(l));
+                        }
 
                         for (std::size_t m = 0; m < n_materials; ++m)
                         {
@@ -365,6 +410,36 @@ void result_io::write_netcdf(
                 layer_age_var.putAtt("units", "days");
                 layer_age_var.putAtt("_FillValue", ncDouble, missing_value_double);
                 layer_age_var.putVar(layer_age.data());
+
+                NcVar layer_porewater_nh4_var =
+                    file.addVar(
+                        "layer_porewater_nh4",
+                        ncDouble,
+                        {snapshot_dim, layer_dim});
+                layer_porewater_nh4_var.putAtt("units", "umol L-1");
+                layer_porewater_nh4_var.putAtt(
+                    "_FillValue", ncDouble, missing_value_double);
+                layer_porewater_nh4_var.putVar(layer_porewater_nh4.data());
+
+                NcVar layer_porewater_so4_var =
+                    file.addVar(
+                        "layer_porewater_so4",
+                        ncDouble,
+                        {snapshot_dim, layer_dim});
+                layer_porewater_so4_var.putAtt("units", "umol L-1");
+                layer_porewater_so4_var.putAtt(
+                    "_FillValue", ncDouble, missing_value_double);
+                layer_porewater_so4_var.putVar(layer_porewater_so4.data());
+
+                NcVar layer_porewater_ch4_var =
+                    file.addVar(
+                        "layer_porewater_ch4",
+                        ncDouble,
+                        {snapshot_dim, layer_dim});
+                layer_porewater_ch4_var.putAtt("units", "umol L-1");
+                layer_porewater_ch4_var.putAtt(
+                    "_FillValue", ncDouble, missing_value_double);
+                layer_porewater_ch4_var.putVar(layer_porewater_ch4.data());
 
                 NcVar layer_mass_var =
                     file.addVar("layer_mass", ncDouble, {snapshot_dim, layer_dim, material_dim});

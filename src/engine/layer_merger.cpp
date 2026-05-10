@@ -212,6 +212,18 @@ void layer_merger::merge_adjacent_layers(
     Eigen::ArrayXd new_porosity = Eigen::ArrayXd::Zero(old_n_layers - 1);
     Eigen::ArrayXd new_top_elevation = Eigen::ArrayXd::Zero(old_n_layers - 1);
     Eigen::ArrayXd new_age = Eigen::ArrayXd::Zero(old_n_layers - 1);
+    Eigen::ArrayXd new_nh4 = Eigen::ArrayXd::Zero(old_n_layers - 1);
+    Eigen::ArrayXd new_so4 = Eigen::ArrayXd::Zero(old_n_layers - 1);
+    Eigen::ArrayXd new_ch4 = Eigen::ArrayXd::Zero(old_n_layers - 1);
+
+    const bool has_nh4 =
+        state.porewater_nh4().size() == old_n_layers;
+
+    const bool has_so4 =
+        state.porewater_so4().size() == old_n_layers;
+
+    const bool has_ch4 =
+        state.porewater_ch4().size() == old_n_layers;
 
     int new_index = 0;
 
@@ -246,6 +258,33 @@ void layer_merger::merge_adjacent_layers(
                     combined_thickness;
             }
 
+            double combined_nh4 = 0.0;
+            if (has_nh4 && combined_pore_volume > 0.0)
+            {
+                combined_nh4 =
+                    (state.porewater_nh4()(lower_layer_index) * pore_volume_lower +
+                     state.porewater_nh4()(upper_layer_index) * pore_volume_upper) /
+                    combined_pore_volume;
+            }
+
+            double combined_so4 = 0.0;
+            if (has_so4 && combined_pore_volume > 0.0)
+            {
+                combined_so4 =
+                    (state.porewater_so4()(lower_layer_index) * pore_volume_lower +
+                     state.porewater_so4()(upper_layer_index) * pore_volume_upper) /
+                    combined_pore_volume;
+            }
+
+            double combined_ch4 = 0.0;
+            if (has_ch4 && combined_pore_volume > 0.0)
+            {
+                combined_ch4 =
+                    (state.porewater_ch4()(lower_layer_index) * pore_volume_lower +
+                     state.porewater_ch4()(upper_layer_index) * pore_volume_upper) /
+                    combined_pore_volume;
+            }
+
             new_mass.row(new_index) =
                 state.mass().row(lower_layer_index) +
                 state.mass().row(upper_layer_index);
@@ -253,6 +292,9 @@ void layer_merger::merge_adjacent_layers(
             new_thickness(new_index) = combined_thickness;
             new_porosity(new_index) = combined_porosity;
             new_age(new_index) = combined_age;
+            new_nh4(new_index) = combined_nh4;
+            new_so4(new_index) = combined_so4;
+            new_ch4(new_index) = combined_ch4;
 
             ++new_index;
             ++old_index;
@@ -268,6 +310,18 @@ void layer_merger::merge_adjacent_layers(
         new_thickness(new_index) = state.layer_thickness()(old_index);
         new_porosity(new_index) = state.layer_porosity()(old_index);
         new_age(new_index) = state.layer_age()(old_index);
+        if (has_nh4)
+        {
+            new_nh4(new_index) = state.porewater_nh4()(old_index);
+        }
+        if (has_so4)
+        {
+            new_so4(new_index) = state.porewater_so4()(old_index);
+        }
+        if (has_ch4)
+        {
+            new_ch4(new_index) = state.porewater_ch4()(old_index);
+        }
 
         ++new_index;
     }
@@ -278,6 +332,9 @@ void layer_merger::merge_adjacent_layers(
     state.layer_porosity() = new_porosity;
     state.layer_age() = new_age;
     state.layer_top_elevation() = new_top_elevation;
+    state.porewater_nh4() = new_nh4;
+    state.porewater_so4() = new_so4;
+    state.porewater_ch4() = new_ch4;
 
     recompute_top_elevations(state);
 }

@@ -96,6 +96,24 @@ void run_from_yaml(const std::string& config_file, bool silent)
         decay,
         compaction);
 
+    const auto porewater_chemistry =
+        process_factory::create_porewater_chemistry_model(
+            loaded.simulation.porewater_chemistry_model_name);
+
+    if (porewater_chemistry)
+    {
+        model.set_porewater_chemistry(porewater_chemistry);
+    }
+
+    const auto methane =
+        process_factory::create_methane_model(
+            loaded.simulation.methane_model_name);
+
+    if (methane)
+    {
+        model.set_methane_model(methane);
+    }
+
     std::function<void(double, double)> progress_cb = nullptr;
     if (!silent)
     {

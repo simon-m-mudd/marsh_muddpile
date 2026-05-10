@@ -30,6 +30,8 @@
 #include "marsh_model/processes/decay_model.hpp"
 #include "marsh_model/processes/deposition_model.hpp"
 #include "marsh_model/processes/evapotranspiration_model.hpp"
+#include "marsh_model/processes/methane_model.hpp"
+#include "marsh_model/processes/porewater_chemistry_model.hpp"
 #include "marsh_model/processes/root_allocation_model.hpp"
 #include "marsh_model/processes/salinity_model.hpp"
 #include "marsh_model/processes/vegetation_model.hpp"
@@ -53,6 +55,15 @@ public:
         std::shared_ptr<decay_model> decay,
         std::shared_ptr<compaction_model> compaction);
 
+    // Optionally inject a porewater chemistry model (e.g. nh4_porewater).
+    // If nullptr (the default), porewater chemistry is not computed.
+    void set_porewater_chemistry(
+        std::shared_ptr<porewater_chemistry_model> porewater_chemistry);
+
+    // Optionally inject a methane model (e.g. sulfate_methane).
+    // If nullptr (the default), methane is not computed.
+    void set_methane_model(std::shared_ptr<methane_model> methane);
+
     // progress_cb is called periodically with (current_time_days, total_time_days).
     // Pass nullptr for no progress reporting.
     simulation_result run_forward(
@@ -74,5 +85,7 @@ private:
     std::shared_ptr<root_allocation_model> root_allocation_;
     std::shared_ptr<decay_model> decay_;
     std::shared_ptr<compaction_model> compaction_;
+    std::shared_ptr<porewater_chemistry_model> porewater_chemistry_; // optional
+    std::shared_ptr<methane_model> methane_;                         // optional
 };
 }

@@ -221,6 +221,18 @@ simulation_config parse_simulation_config(const YAML::Node& node)
             "compaction_model_name",
             "two_stage_compaction");
 
+    config.porewater_chemistry_model_name =
+        get_optional_scalar<std::string>(
+            node,
+            "porewater_chemistry_model_name",
+            "none");
+
+    config.methane_model_name =
+        get_optional_scalar<std::string>(
+            node,
+            "methane_model_name",
+            "none");
+
     return config;
 }
 

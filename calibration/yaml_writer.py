@@ -20,6 +20,7 @@ import yaml
 
 from site_config import PlotConfig
 from forcing_builder import build_monthly_forcing
+from species_presets import get_species_parameters
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +66,7 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "salinity_storage_porosity_sensitivity": 0.50,
     "salinity_min_exchange_modifier": 0.10,
     "salinity_min_storage_modifier": 0.25,
+    "salinity_subsurface_flushing_rate_per_day": 0.003,
 
     # ET model
     "et_background_mm_d": 0.5,
@@ -174,6 +176,40 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "decomposition_root_porosity_sensitivity": 0.3,
     "decomposition_root_salinity_threshold_ppt": 22.0,
     "decomposition_root_salinity_sensitivity": 0.025,
+
+    # porewater NH4
+    "nh4_carbon_fraction": 0.45,
+    "nh4_c_to_n_molar_ratio": 25.0,
+    "nh4_creek_umol_L": 5.0,
+    "nh4_tidal_flushing_rate_per_d": 0.5,
+    "nh4_flushing_depth_scale_m": 0.05,
+    "nh4_diffusion_coeff_m2_per_d": 1.0e-5,
+    "nh4_uptake_vmax_umol_L_d_per_kg_m3": 10.0,
+    "nh4_km_umol_L": 50.0,
+    "nh4_initial_umol_L": 100.0,
+    "nh4_min_umol_L": 0.0,
+    "nh4_max_umol_L": 2000.0,
+
+    # sulfate-methane model
+    # SO4 boundary: North Inlet mean salinity ~24.5 ppt → ~19.6 mM SO4
+    "ch4_carbon_fraction": 0.45,
+    "ch4_initial_so4_umol_L": 19600.0,
+    "ch4_initial_ch4_umol_L": 0.0,
+    "ch4_creek_so4_umol_L": 19600.0,
+    "ch4_tidal_flushing_rate_per_d": 0.3,
+    "ch4_flushing_depth_scale_m": 0.10,
+    "ch4_km_so4_umol_L": 1000.0,
+    "ch4_c_to_ch4": 2.0,         # molar C : CH4 ratio for methanogenesis
+    "ch4_diffusion_coeff_m2_per_d": 1.0e-5,
+    "ch4_so4_diffusion_coeff_m2_per_d": 1.0e-5,
+    "ch4_oxidation_rate_per_d": 0.05,
+    "ch4_oxidation_depth_scale_m": 0.05,
+    "ch4_ebullition_threshold_umol_L": 500.0,
+    # plant_transport_factor=2 → total flux = diffusive × 3, calibrated
+    # from edi.1828.3 (root+shoot / root-only chambers ≈ 3)
+    "ch4_plant_transport_factor": 2.0,
+    "ch4_min_umol_L": 0.0,
+    "ch4_max_umol_L": 2000.0,
 
     # compaction
     "compaction_loi_intercept_percent": 0.0,
@@ -349,6 +385,11 @@ def write_config(
 
     parameters = dict(_DEFAULT_PARAMETERS)
     parameters.update(_tidal_constituent_parameters(config))
+    # Apply species-specific parameter overrides before any caller overrides.
+    # This allows calibration scripts to further refine individual parameters
+    # without having to repeat the full species preset.
+    species_params = get_species_parameters(config.species)
+    parameters.update(species_params)
     # edge_distance_deposition parameters — distance from edge matches the
     # distance_from_creek_m site property used by the salinity model.
     parameters["deposition_distance_from_edge_m"] = config.distance_from_creek_m
@@ -359,7 +400,8 @@ def write_config(
 
     initial_layers = build_initial_column_layers(config)
 
-    lai_per_kg = _DEFAULT_PARAMETERS["vegetation_lai_per_kg_m2"]
+    # Use the merged lai_per_kg (may differ from the default for non-S.alt species)
+    lai_per_kg = parameters["vegetation_lai_per_kg_m2"]
     abg_kg = config.mean_aboveground_biomass_kg_m2
     blg_kg = abg_kg * config.initial_root_to_shoot_ratio
 
@@ -376,6 +418,8 @@ def write_config(
             "root_allocation_model_name": "exponential_root_allocation",
             "decay_model_name": "marsh_decay",
             "compaction_model_name": "two_stage_compaction",
+            "porewater_chemistry_model_name": "nh4_porewater",
+            "methane_model_name": "sulfate_methane",
         },
         "site": {
             "distance_from_creek_m": config.distance_from_creek_m,

@@ -24,5 +24,10 @@ struct simulation_config
     std::string evapotranspiration_model_name = "simple_canopy_et";
     std::string vegetation_model_name = "marsh_gpp_biomass";
 
+    // "none" disables porewater chemistry; "nh4_porewater" enables the NH4 model.
+    std::string porewater_chemistry_model_name = "none";
+
+    // "none" disables methane; "sulfate_methane" enables the SO4/CH4 model.
+    std::string methane_model_name = "none";
 };
 }

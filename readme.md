@@ -26,6 +26,8 @@ The code currently includes modular implementations of:
   - exponential emplacement of roots through the sediment column
 - **decay**
   - first-order decay of materials with depth and temperature effects
+- **porewater chemistry**
+  - per-layer ammonium (NH4+) driven by decomposition, tidal flushing, diffusion, and root uptake
 - **compaction**
   - a two-stage compaction model motivated by **Brain et al. (2012)**
 - **material catalog**
@@ -52,6 +54,7 @@ The model tracks a 1D vertical sediment column in a marsh and can represent:
 - refractory organic matter
 - live roots
 - isotopes and tracers, where configured
+- per-layer porewater ammonium (NH4+) concentrations
 
 Each timestep can include:
 
@@ -59,6 +62,7 @@ Each timestep can include:
 - plant biomass production
 - belowground root emplacement
 - organic matter decay
+- porewater NH4 cycling (production, tidal flushing, diffusion, root uptake)
 - compaction and porosity evolution
 
 ## Current status
@@ -276,6 +280,7 @@ simulation:
   root_allocation_model_name: exponential_root_allocation
   decay_model_name: first_order_decay
   compaction_model_name: two_stage_compaction
+  porewater_chemistry_model_name: nh4_porewater  # optional; omit or set "none" to disable
 
 parameters:
   water_density_kg_m3: 1000.0
@@ -429,6 +434,16 @@ The code currently supports the following model names.
 
 - `identity_decay`
 - `first_order_decay`
+- `marsh_decay`
+
+## Porewater chemistry
+
+- `none` (default — no porewater chemistry computed)
+- `nh4_porewater` — per-layer NH4+ driven by organic matter decomposition
+
+Enable with `porewater_chemistry_model_name: nh4_porewater` in the `simulation` block.
+The NH4 model outputs `surface_nh4_umol_L` to the time-series and `layer_porewater_nh4`
+to column snapshots.
 
 ## Compaction
 
@@ -450,6 +465,7 @@ The marsh column is represented using array-based state storage:
 - layer porosity
 - layer top elevation
 - layer age
+- per-layer porewater NH4 concentration (μmol L⁻¹)
 
 This structure is designed for:
 

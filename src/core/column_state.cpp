@@ -31,6 +31,9 @@ void column_state::resize(int n_layers, int n_materials)
     layer_porosity_ = Eigen::ArrayXd::Zero(n_layers);
     layer_top_elevation_ = Eigen::ArrayXd::Zero(n_layers);
     layer_age_ = Eigen::ArrayXd::Zero(n_layers);
+    porewater_nh4_umol_per_L_ = Eigen::ArrayXd::Zero(n_layers);
+    porewater_so4_umol_per_L_ = Eigen::ArrayXd::Zero(n_layers);
+    porewater_ch4_umol_per_L_ = Eigen::ArrayXd::Zero(n_layers);
 }
 
 void column_state::append_surface_layer(const Eigen::ArrayXd& deposited_mass)
@@ -55,11 +58,17 @@ void column_state::append_surface_layer(const Eigen::ArrayXd& deposited_mass)
     layer_porosity_.conservativeResize(old_layers + 1);
     layer_top_elevation_.conservativeResize(old_layers + 1);
     layer_age_.conservativeResize(old_layers + 1);
+    porewater_nh4_umol_per_L_.conservativeResize(old_layers + 1);
+    porewater_so4_umol_per_L_.conservativeResize(old_layers + 1);
+    porewater_ch4_umol_per_L_.conservativeResize(old_layers + 1);
 
     layer_thickness_(old_layers) = 0.0;
     layer_porosity_(old_layers) = 0.0;
     layer_top_elevation_(old_layers) = get_surface_elevation();
     layer_age_(old_layers) = 0.0;
+    porewater_nh4_umol_per_L_(old_layers) = 0.0;
+    porewater_so4_umol_per_L_(old_layers) = 0.0;
+    porewater_ch4_umol_per_L_(old_layers) = 0.0;
 }
 
 void column_state::add_mass_to_layers(const Eigen::ArrayXXd& delta_mass)
@@ -167,5 +176,35 @@ Eigen::ArrayXd& column_state::layer_age()
 const Eigen::ArrayXd& column_state::layer_age() const
 {
     return layer_age_;
+}
+
+Eigen::ArrayXd& column_state::porewater_nh4()
+{
+    return porewater_nh4_umol_per_L_;
+}
+
+const Eigen::ArrayXd& column_state::porewater_nh4() const
+{
+    return porewater_nh4_umol_per_L_;
+}
+
+Eigen::ArrayXd& column_state::porewater_so4()
+{
+    return porewater_so4_umol_per_L_;
+}
+
+const Eigen::ArrayXd& column_state::porewater_so4() const
+{
+    return porewater_so4_umol_per_L_;
+}
+
+Eigen::ArrayXd& column_state::porewater_ch4()
+{
+    return porewater_ch4_umol_per_L_;
+}
+
+const Eigen::ArrayXd& column_state::porewater_ch4() const
+{
+    return porewater_ch4_umol_per_L_;
 }
 }

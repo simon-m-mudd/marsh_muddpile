@@ -195,56 +195,68 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
             hydro,
             parameters);
 
-    diagnostics.aboveground_mortality_kg_m2_d =
-        aboveground_mortality_rate_per_day *
-        std::max(0.0, eco_state.aboveground_biomass_kg_m2);
-
-    diagnostics.belowground_mortality_kg_m2_d =
-        belowground_mortality_rate_per_day *
-        std::max(0.0, eco_state.belowground_biomass_kg_m2);
-
+    // ODE parameters — computed once, reused for the exact solution and the
+    // integrated litter calculation.
+    //
     // Exact solution to the first-order linear ODE
-    //   dbio/dt = g*(1 - bio/cap) - m*bio  =  g - (g/cap + m)*bio
-    // where g is the capacity-independent growth rate.  This avoids the
-    // forward-Euler overshoot that occurs with coarse monthly timesteps.
+    //   dbio/dt = g*(1 - bio/cap) - m*bio  =  g - B_eff*bio
+    // where B_eff = g/cap + m  and  bio_eq = g/B_eff.
+    // This avoids the forward-Euler overshoot that occurs with monthly timesteps.
+    const double g_above =
+        diagnostics.npp_gC_m2_d * shoot_allocation_fraction /
+        (1000.0 * biomass_carbon_fraction);
+    const double B_eff_above =
+        g_above / aboveground_capacity_kg_m2 + aboveground_mortality_rate_per_day;
+
+    const double g_below =
+        diagnostics.npp_gC_m2_d * root_allocation_fraction /
+        (1000.0 * biomass_carbon_fraction);
+    const double B_eff_below =
+        g_below / belowground_capacity_kg_m2 + belowground_mortality_rate_per_day;
+
+    const double bio0_above = eco_state.aboveground_biomass_kg_m2;
+    const double bio0_below = eco_state.belowground_biomass_kg_m2;
+
+    if (B_eff_above > 0.0)
     {
-        const double g_above =
-            diagnostics.npp_gC_m2_d * shoot_allocation_fraction /
-            (1000.0 * biomass_carbon_fraction);
-        const double B_above =
-            g_above / aboveground_capacity_kg_m2 +
-            aboveground_mortality_rate_per_day;
-        if (B_above > 0.0)
-        {
-            const double bio_eq = g_above / B_above;
-            const double bio0   = eco_state.aboveground_biomass_kg_m2;
-            eco_state.aboveground_biomass_kg_m2 = std::max(
-                0.0,
-                bio_eq + (bio0 - bio_eq) * std::exp(-B_above * forcing.dt_days));
-        }
+        const double bio_eq = g_above / B_eff_above;
+        eco_state.aboveground_biomass_kg_m2 = std::max(
+            0.0,
+            bio_eq + (bio0_above - bio_eq) * std::exp(-B_eff_above * forcing.dt_days));
     }
 
+    if (B_eff_below > 0.0)
     {
-        const double g_below =
-            diagnostics.npp_gC_m2_d * root_allocation_fraction /
-            (1000.0 * biomass_carbon_fraction);
-        const double B_below =
-            g_below / belowground_capacity_kg_m2 +
-            belowground_mortality_rate_per_day;
-        if (B_below > 0.0)
-        {
-            const double bio_eq = g_below / B_below;
-            const double bio0   = eco_state.belowground_biomass_kg_m2;
-            eco_state.belowground_biomass_kg_m2 = std::max(
-                0.0,
-                bio_eq + (bio0 - bio_eq) * std::exp(-B_below * forcing.dt_days));
-        }
+        const double bio_eq = g_below / B_eff_below;
+        eco_state.belowground_biomass_kg_m2 = std::max(
+            0.0,
+            bio_eq + (bio0_below - bio_eq) * std::exp(-B_eff_below * forcing.dt_days));
     }
 
-    eco_state.litter_kg_m2 +=
-        forcing.dt_days *
-        (diagnostics.aboveground_mortality_kg_m2_d +
-         diagnostics.belowground_mortality_kg_m2_d);
+    // Exact integrated mortality from the ODE mass-balance identity:
+    //   integral_0^dt m*B(t) dt = (m / B_eff) * (g*dt + B0 - B_final)
+    //
+    // Using this instead of the Euler estimate m*B0*dt prevents litter from
+    // exceeding actual biomass loss when mortality is high and growth is low
+    // (e.g., winter senescence with monthly timesteps where m*dt >> 1).
+    const double litter_above_kg_m2 =
+        (B_eff_above > 0.0)
+        ? (aboveground_mortality_rate_per_day / B_eff_above) *
+          std::max(0.0, g_above * forcing.dt_days + bio0_above -
+                        eco_state.aboveground_biomass_kg_m2)
+        : 0.0;
+
+    const double litter_below_kg_m2 =
+        (B_eff_below > 0.0)
+        ? (belowground_mortality_rate_per_day / B_eff_below) *
+          std::max(0.0, g_below * forcing.dt_days + bio0_below -
+                        eco_state.belowground_biomass_kg_m2)
+        : 0.0;
+
+    eco_state.litter_kg_m2 += litter_above_kg_m2 + litter_below_kg_m2;
+
+    diagnostics.aboveground_mortality_kg_m2_d = litter_above_kg_m2 / forcing.dt_days;
+    diagnostics.belowground_mortality_kg_m2_d = litter_below_kg_m2 / forcing.dt_days;
 
     eco_state.lai =
         compute_lai_from_aboveground_biomass(

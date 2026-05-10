@@ -52,11 +52,32 @@ public:
     Eigen::ArrayXd& layer_age();
     const Eigen::ArrayXd& layer_age() const;
 
+    // Porewater ammonium concentration, μmol L-1, per layer.
+    // Zero indicates uninitialised; the NH4 porewater model initialises
+    // from nh4_initial_umol_L on first use.
+    Eigen::ArrayXd& porewater_nh4();
+    const Eigen::ArrayXd& porewater_nh4() const;
+
+    // Porewater sulfate concentration, μmol L-1, per layer.
+    // Zero indicates uninitialised; the sulfate-methane model initialises
+    // from ch4_initial_so4_umol_L on first use.
+    Eigen::ArrayXd& porewater_so4();
+    const Eigen::ArrayXd& porewater_so4() const;
+
+    // Porewater methane concentration, μmol L-1, per layer.
+    // Zero indicates uninitialised; the sulfate-methane model initialises
+    // from ch4_initial_ch4_umol_L on first use.
+    Eigen::ArrayXd& porewater_ch4();
+    const Eigen::ArrayXd& porewater_ch4() const;
+
 private:
     Eigen::ArrayXXd mass_;
     Eigen::ArrayXd layer_thickness_;
     Eigen::ArrayXd layer_porosity_;
     Eigen::ArrayXd layer_top_elevation_;
     Eigen::ArrayXd layer_age_;
+    Eigen::ArrayXd porewater_nh4_umol_per_L_;
+    Eigen::ArrayXd porewater_so4_umol_per_L_;
+    Eigen::ArrayXd porewater_ch4_umol_per_L_;
 };
 }

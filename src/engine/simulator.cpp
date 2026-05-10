@@ -24,6 +24,8 @@
 
 #include "marsh_model/engine/simulator.hpp"
 
+#include "marsh_model/core/decay_fluxes.hpp"
+#include "marsh_model/processes/methane_model.hpp"
 #include "marsh_model/engine/layer_merger.hpp"
 #include "marsh_model/engine/surface_property_summariser.hpp"
 
@@ -63,6 +65,17 @@ simulator::simulator(
         throw std::invalid_argument(
             "simulator requires all process modules to be non-null");
     }
+}
+
+void simulator::set_porewater_chemistry(
+    std::shared_ptr<porewater_chemistry_model> porewater_chemistry)
+{
+    porewater_chemistry_ = std::move(porewater_chemistry);
+}
+
+void simulator::set_methane_model(std::shared_ptr<methane_model> methane)
+{
+    methane_ = std::move(methane);
 }
 
 simulation_result simulator::run_forward(
@@ -113,6 +126,10 @@ simulation_result simulator::run_forward(
     auto& mean_water_level_ts = result.time_series["mean_water_level_m"];
     auto& max_water_level_ts = result.time_series["max_water_level_m"];
 
+    auto& surface_nh4_ts = result.time_series["surface_nh4_umol_L"];
+    auto& surface_ch4_flux_ts = result.time_series["surface_ch4_flux_umol_m2_s"];
+    auto& surface_so4_ts = result.time_series["surface_so4_umol_L"];
+
     result.total_mass_by_material_time_series.reserve(n_steps);
 
     model_time_days_ts.reserve(n_steps);
@@ -139,6 +156,9 @@ simulation_result simulator::run_forward(
     inundation_depth_ts.reserve(n_steps);
     mean_water_level_ts.reserve(n_steps);
     max_water_level_ts.reserve(n_steps);
+    surface_nh4_ts.reserve(n_steps);
+    surface_ch4_flux_ts.reserve(n_steps);
+    surface_so4_ts.reserve(n_steps);
 
     for (int i = 0; i < forcing.size(); ++i)
     {
@@ -235,11 +255,15 @@ simulation_result simulator::run_forward(
             state.append_surface_layer(surface_flux);
         }
 
+        decay_fluxes fluxes;
+
         decay_context decay_ctx;
         decay_ctx.eco_state = &eco_state;
         decay_ctx.hydrology = &hydro;
         decay_ctx.surface = &surface;
         decay_ctx.site = &site;
+        decay_ctx.out_fluxes =
+            (porewater_chemistry_ || methane_) ? &fluxes : nullptr;
 
         decay_->apply_decay(
             state,
@@ -247,6 +271,33 @@ simulation_result simulator::run_forward(
             catalog,
             parameters,
             decay_ctx);
+
+        if (porewater_chemistry_)
+        {
+            porewater_chemistry_->update_porewater(
+                state,
+                fluxes,
+                step,
+                site,
+                eco_state,
+                hydro,
+                catalog,
+                parameters);
+        }
+
+        double surface_ch4_flux_umol_m2_s = 0.0;
+        if (methane_)
+        {
+            surface_ch4_flux_umol_m2_s = methane_->update_methane(
+                state,
+                fluxes,
+                step,
+                site,
+                eco_state,
+                hydro,
+                catalog,
+                parameters);
+        }
 
         compaction_->update_compaction(
             state,
@@ -287,6 +338,22 @@ simulation_result simulator::run_forward(
         inundation_depth_ts.push_back(hydro.mean_inundation_depth_m);
         mean_water_level_ts.push_back(hydro.mean_water_level_m);
         max_water_level_ts.push_back(hydro.max_water_level_m);
+
+        {
+            const auto& nh4 = state.porewater_nh4();
+            const double surface_nh4 =
+                (nh4.size() > 0) ? nh4(nh4.size() - 1) : 0.0;
+            surface_nh4_ts.push_back(surface_nh4);
+        }
+
+        surface_ch4_flux_ts.push_back(surface_ch4_flux_umol_m2_s);
+
+        {
+            const auto& so4 = state.porewater_so4();
+            const double surface_so4 =
+                (so4.size() > 0) ? so4(so4.size() - 1) : 0.0;
+            surface_so4_ts.push_back(surface_so4);
+        }
 
         const Eigen::ArrayXd mass_by_mat = state.get_total_mass_by_material();
         result.total_mass_by_material_time_series.emplace_back(

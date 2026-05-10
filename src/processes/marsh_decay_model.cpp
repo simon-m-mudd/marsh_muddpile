@@ -293,6 +293,13 @@ void marsh_decay_model::apply_decay(
 
     auto& mass = state.mass();
 
+    // Initialise output flux array if requested.
+    if (context.out_fluxes != nullptr)
+    {
+        context.out_fluxes->mass_decomposed_kg_m2 =
+            Eigen::ArrayXXd::Zero(n_layers, n_materials);
+    }
+
 #ifdef marsh_muddpile_use_openmp
 #pragma omp parallel for schedule(static) if(n_layers > 32)
 #endif
@@ -352,8 +359,17 @@ void marsh_decay_model::apply_decay(
                     forcing.dt_days,
                     parameters);
 
-            mass(layer_index, material_index) =
+            const double new_mass =
                 std::max(0.0, current_mass * combined_multiplier);
+
+            mass(layer_index, material_index) = new_mass;
+
+            if (context.out_fluxes != nullptr)
+            {
+                context.out_fluxes->mass_decomposed_kg_m2(
+                    layer_index, material_index) =
+                    current_mass - new_mass;
+            }
         }
     }
 }

@@ -118,6 +118,12 @@ class PlotConfig:
     # Root : shoot ratio for initial column root loading.
     initial_root_to_shoot_ratio: float = 3.0
 
+    # Plant species — controls which parameter preset is applied.
+    # One of: "spartina_alterniflora", "spartina_patens", "juncus_roemerianus".
+    # See calibration/species_presets.py for the parameter values associated
+    # with each species.
+    species: str = "spartina_alterniflora"
+
     # Initial ecophysiology state (derived from mean_aboveground_biomass_kg_m2
     # if not explicitly overridden; set in yaml_writer.write_config).
     initial_salinity_ppt: float = 20.0

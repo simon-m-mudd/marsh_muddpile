@@ -16,6 +16,8 @@
 
 #include "marsh_model/processes/composite_water_level_model.hpp"
 #include "marsh_model/processes/distance_flushing_salinity_model.hpp"
+#include "marsh_model/processes/nh4_porewater_model.hpp"
+#include "marsh_model/processes/sulfate_methane_model.hpp"
 #include "marsh_model/processes/simple_canopy_et_model.hpp"
 #include "marsh_model/processes/marsh_gpp_biomass_model.hpp"
 
@@ -173,5 +175,39 @@ std::shared_ptr<compaction_model> process_factory::create_compaction_model(
     }
 
     throw std::invalid_argument("unknown compaction model: " + name);
+}
+
+std::shared_ptr<porewater_chemistry_model>
+process_factory::create_porewater_chemistry_model(
+    const std::string& name)
+{
+    if (name == "none" || name.empty())
+    {
+        return nullptr;
+    }
+
+    if (name == "nh4_porewater")
+    {
+        return std::make_shared<nh4_porewater_model>();
+    }
+
+    throw std::invalid_argument("unknown porewater chemistry model: " + name);
+}
+
+std::shared_ptr<methane_model>
+process_factory::create_methane_model(
+    const std::string& name)
+{
+    if (name == "none" || name.empty())
+    {
+        return nullptr;
+    }
+
+    if (name == "sulfate_methane")
+    {
+        return std::make_shared<sulfate_methane_model>();
+    }
+
+    throw std::invalid_argument("unknown methane model: " + name);
 }
 }

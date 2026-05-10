@@ -182,11 +182,31 @@ void distance_flushing_salinity_model::update_salinity(
         (creek_salinity_ppt - current_salinity_ppt) /
         storage_modifier;
 
+    // Subsurface lateral exchange: slow background relaxation toward creek
+    // salinity driven by porewater diffusion and lateral advection through
+    // the saturated column.  This is independent of tidal inundation and
+    // prevents runaway concentration on sites that are rarely overtopped.
+    // Rate is attenuated by the same distance modifier as tidal flushing.
+    // Default 0.0 preserves the original behaviour; typical calibrated
+    // values for a site 30–60 m from a creek are 0.002–0.005 d⁻¹.
+    const double subsurface_flushing_rate_per_day =
+        get_parameter_or_default(
+            parameters,
+            "salinity_subsurface_flushing_rate_per_day",
+            0.0);
+
+    const double subsurface_relaxation_tendency_ppt_per_day =
+        subsurface_flushing_rate_per_day *
+        distance_modifier *
+        (creek_salinity_ppt - current_salinity_ppt) /
+        storage_modifier;
+
     const double updated_salinity_ppt =
         current_salinity_ppt +
         forcing.dt_days *
             (local_concentration_tendency_ppt_per_day +
-             salinity_relaxation_tendency_ppt_per_day);
+             salinity_relaxation_tendency_ppt_per_day +
+             subsurface_relaxation_tendency_ppt_per_day);
 
     eco_state.root_zone_salinity_ppt =
         clamp(updated_salinity_ppt, min_salinity_ppt, max_salinity_ppt);
