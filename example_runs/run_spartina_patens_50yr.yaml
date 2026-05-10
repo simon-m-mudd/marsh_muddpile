@@ -1,0 +1,310 @@
+# run_spartina_patens_50yr.yaml
+#
+# Example 50-year run for a Spartina patens high-marsh plot at a
+# Plum Island Ecosystem (PIE)-like site (Rowley River, MA).
+#
+# Key differences from the S. alterniflora default:
+#   - Surface elevation 0.85 m (high marsh, rarely flooded)
+#   - Cooler climate (mean air temp ~10 °C, warm season peak ~22 °C)
+#   - Species-specific vegetation parameters applied manually below
+#     (mirrors calibration/species_presets.py: SPARTINA_PATENS)
+#
+# To run:
+#   marsh_cli run_spartina_patens_50yr.yaml
+
+simulation:
+  start_year: 0
+  end_year: 50
+  dt_days: 365.0
+
+  water_level_model_name: composite_water_level
+  salinity_model_name: distance_flushing_salinity
+  evapotranspiration_model_name: simple_canopy_et
+  vegetation_model_name: marsh_gpp_biomass
+  deposition_model_name: tke_deposition
+  root_allocation_model_name: exponential_root_allocation
+  decay_model_name: marsh_decay
+  compaction_model_name: two_stage_compaction
+
+site:
+  distance_from_creek_m: 80.0     # high-marsh plot far from channel
+  creek_bank_elevation_m: 0.0
+  local_tidal_offset_m: 0.0
+
+parameters:
+  water_density_kg_m3: 1000.0
+  gravity_m_s2: 9.81
+
+  layer_merging_enable: 1.0
+  layer_merging_max_layers: 200.0
+  layer_merging_minimum_unmerged_depth_m: 0.30
+  layer_merging_target_thickness_m: 0.05
+
+  # Tidal constituents — PIE (Parker River / Rowley River, MA)
+  # Nearest gauge: NOAA 8419870 (Seavey Island, NH)
+  water_level_substeps_per_step: 240
+  water_level_reference_time_hours: 0.0
+  water_level_constituent_M2_amplitude_m: 1.214
+  water_level_constituent_M2_phase_deg: 110.9
+  water_level_constituent_S2_amplitude_m: 0.177
+  water_level_constituent_S2_phase_deg: 147.2
+  water_level_constituent_N2_amplitude_m: 0.278
+  water_level_constituent_N2_phase_deg: 81.3
+  water_level_constituent_K1_amplitude_m: 0.132
+  water_level_constituent_K1_phase_deg: 207.0
+  water_level_constituent_O1_amplitude_m: 0.106
+  water_level_constituent_O1_phase_deg: 189.1
+
+  surface_property_active_depth_m: 0.10
+  surface_property_fine_grain_size_threshold_m: 6.3e-5
+  surface_property_default_grain_size_m: 2.0e-5
+  surface_property_default_organic_carbon_fraction: 0.45
+
+  # Salinity — PIE Rowley River (~22 ppt creek)
+  salinity_min_ppt: 0.0
+  salinity_max_ppt: 80.0
+  salinity_initial_root_zone_ppt: 15.0
+  salinity_default_creek_ppt: 22.0
+  salinity_et_concentration_rate_ppt_per_mm: 0.020
+  salinity_precipitation_dilution_rate_ppt_per_mm: 0.030
+  salinity_freshwater_dilution_rate_ppt_per_mm: 0.030
+  salinity_base_flushing_rate_per_day: 0.30   # high-marsh: less tidal flushing
+  salinity_flushing_efolding_distance_m: 50.0
+  salinity_exchange_coarse_sensitivity: 0.75
+  salinity_exchange_organic_sensitivity: 0.50
+  salinity_storage_fine_sensitivity: 1.00
+  salinity_storage_organic_sensitivity: 1.00
+  salinity_storage_porosity_sensitivity: 0.50
+  salinity_min_exchange_modifier: 0.10
+  salinity_min_storage_modifier: 0.25
+
+  et_background_mm_d: 0.5
+  et_temperature_base_c: 0.0
+  et_temperature_coefficient_mm_d_per_c: 0.12
+  et_par_coefficient_mm_d_per_umol_m2_d: 1.0e-4
+  et_cover_extinction_coefficient: 0.7
+  et_kc_min: 0.2
+  et_kc_max: 1.0
+  et_salinity_threshold_ppt: 15.0
+  et_salinity_stress_per_ppt: 0.05
+  et_inundation_threshold_fraction: 0.20
+  et_inundation_stress_per_fraction: 1.5
+  et_min_transpiration_stress: 0.05
+  et_transpiration_fraction_min: 0.15
+  et_transpiration_fraction_max: 0.85
+  et_evaporation_fine_sensitivity: 0.25
+  et_evaporation_organic_sensitivity: 0.20
+  et_evaporation_porosity_sensitivity: 0.15
+  et_evaporation_coarse_sensitivity: 0.15
+  et_min_evaporation_modifier: 0.2
+  et_biomass_to_lai_coefficient: 4.5   # match vegetation_lai_per_kg_m2 below
+
+  # -----------------------------------------------------------------------
+  # Spartina patens vegetation parameters
+  # Source: calibration/species_presets.py SPARTINA_PATENS
+  # -----------------------------------------------------------------------
+  vegetation_days_per_year: 365.0
+  vegetation_lue_gC_per_umol: 2.2e-4
+  vegetation_carbon_use_efficiency: 0.5
+  vegetation_biomass_carbon_fraction: 0.45
+
+  vegetation_lai_light_extinction: 0.85
+  vegetation_max_fpar: 0.95
+  vegetation_lai_per_kg_m2: 4.5      # fine dense mat
+  vegetation_max_lai: 4.0
+
+  vegetation_temperature_optimum_c: 23.0   # captures New England populations
+  vegetation_temperature_sigma_c: 12.0
+
+  vegetation_hydroperiod_optimum_fraction: 0.05   # prefers drier high marsh
+  vegetation_hydroperiod_sigma_fraction: 0.12
+
+  vegetation_salinity_threshold_ppt: 15.0
+  vegetation_salinity_stress_per_ppt: 0.05
+
+  vegetation_shoot_allocation_min: 0.30
+  vegetation_shoot_allocation_max: 0.60
+
+  vegetation_aboveground_capacity_kg_m2: 1.2   # shorter stature
+  vegetation_belowground_capacity_kg_m2: 4.5   # dense root mat
+
+  vegetation_aboveground_mortality_base_per_day: 8.0e-4
+  vegetation_aboveground_mortality_seasonal_amp_per_day: 0.0
+  vegetation_mortality_peak_day: 300.0
+  vegetation_cold_mortality_threshold_c: 15.0  # earlier autumn die-back at PIE
+  vegetation_cold_mortality_slope_per_day_per_c: 3.0e-3
+  vegetation_aboveground_hydroperiod_mortality_threshold: 0.20
+  vegetation_aboveground_hydroperiod_mortality_slope_per_day: 0.015
+  vegetation_aboveground_salinity_mortality_threshold_ppt: 28.0
+  vegetation_aboveground_salinity_mortality_slope_per_day_per_ppt: 5.0e-4
+
+  vegetation_belowground_mortality_base_per_day: 3.0e-4
+  vegetation_belowground_hydroperiod_mortality_threshold: 0.30
+  vegetation_belowground_hydroperiod_mortality_slope_per_day: 0.005
+  vegetation_belowground_salinity_mortality_threshold_ppt: 28.0
+  vegetation_belowground_salinity_mortality_slope_per_day_per_ppt: 0.00025
+
+  root_efolding_depth_m: 0.07         # shallower root mat
+  root_profile_normalize_to_column: 1.0
+  root_allocation_to_labile_fraction: 0.50
+  root_allocation_to_refractory_fraction: 0.50
+
+  # TKE deposition — high-marsh receives less sediment than low-marsh
+  deposition_reference_biomass_g_m2: 500.0
+  deposition_reference_flow_velocity_m_s: 0.03
+  deposition_limiting_flow_velocity_m_s: 0.10
+  deposition_time_fractions_per_tide: 720.0
+  deposition_min_water_depth_m: 0.002
+  deposition_von_karman: 0.40
+  deposition_tke_coefficient: 0.20
+  deposition_water_density_kg_m3: 1000.0
+  deposition_aa: 0.46
+  deposition_bb: 3.8
+  deposition_alpha_turb: 0.9
+  deposition_alpha_zero: 11.0
+  deposition_alpha: 0.55
+  deposition_beta: 0.40
+  deposition_mu: 0.00066
+  deposition_phi: 0.29
+  deposition_kappa: 0.224
+  deposition_nu_m2_s: 1.0e-5
+  deposition_gamma_tr: 0.718
+  deposition_epsilon: 2.08
+
+  decay_reference_temperature_c: 20.0
+  decay_temperature_factor_per_degree: 0.0
+  decay_use_exact_solution: 1.0
+  decomposition_modifier_global_min_multiplier: 0.05
+  decomposition_modifier_global_max_multiplier: 2.0
+  decomposition_labile_hydro_sensitivity: 2.5
+  decomposition_labile_fine_sensitivity: 0.8
+  decomposition_labile_organic_sensitivity: 0.6
+  decomposition_labile_porosity_sensitivity: 0.4
+  decomposition_labile_salinity_threshold_ppt: 18.0
+  decomposition_labile_salinity_sensitivity: 0.035
+  decomposition_refractory_hydro_sensitivity: 1.2
+  decomposition_refractory_fine_sensitivity: 0.5
+  decomposition_refractory_organic_sensitivity: 0.4
+  decomposition_refractory_porosity_sensitivity: 0.2
+  decomposition_refractory_salinity_threshold_ppt: 25.0
+  decomposition_refractory_salinity_sensitivity: 0.015
+  decomposition_root_hydro_sensitivity: 1.8
+  decomposition_root_fine_sensitivity: 0.7
+  decomposition_root_organic_sensitivity: 0.5
+  decomposition_root_porosity_sensitivity: 0.3
+  decomposition_root_salinity_threshold_ppt: 22.0
+  decomposition_root_salinity_sensitivity: 0.025
+
+  compaction_loi_intercept_percent: 0.0
+  compaction_loi_slope_percent_per_organic_fraction: 100.0
+  compaction_default_grain_size_m: 2.0e-5
+  compaction_e_1_intercept: 0.50
+  compaction_e_1_loi_slope: 0.040
+  compaction_e_1_grain_size_slope: 0.0
+  compaction_c_r_intercept: 0.005
+  compaction_c_r_loi_slope: 0.0015
+  compaction_c_r_grain_size_slope: 0.0
+  compaction_c_c_intercept: 0.10
+  compaction_c_c_loi_slope: 0.020
+  compaction_c_c_grain_size_slope: 0.0
+  compaction_sigma_y_intercept_kpa: 12.0
+  compaction_sigma_y_loi_slope: -0.15
+  compaction_sigma_y_grain_size_slope: 0.0
+  compaction_min_e_1: 0.10
+  compaction_min_c_r: 1.0e-4
+  compaction_min_c_c: 1.0e-3
+  compaction_min_sigma_y_kpa: 3.0
+  compaction_min_effective_stress_kpa: 0.01
+  compaction_reference_stress_kpa: 1.0
+  compaction_min_void_ratio: 0.01
+
+materials:
+  - name: sand
+    category: mineral
+    density: 2650.0
+    allow_surface_deposition: false
+    settling:
+      diameter: 2.0e-4
+      settling_velocity: 2.0e-2
+  - name: silt
+    category: mineral
+    density: 2600.0
+    allow_surface_deposition: true
+    settling:
+      diameter: 2.0e-5
+      settling_velocity: 3.7e-5
+  - name: fine_silt
+    category: mineral
+    density: 2600.0
+    allow_surface_deposition: true
+    settling:
+      diameter: 1.5e-5
+      settling_velocity: 1.5e-4
+  - name: refractory_organic
+    category: organic_refractory
+    density: 1400.0
+    allow_root_input: true
+    decay:
+      k_0: 0.001
+      gamma: 0.25
+      temperature_sensitive: true
+  - name: labile_organic
+    category: organic_labile
+    density: 1200.0
+    allow_root_input: true
+    decay:
+      k_0: 0.01
+      gamma: 0.10
+      temperature_sensitive: true
+  - name: roots
+    category: live_root
+    density: 1100.0
+    allow_root_input: true
+
+# Constant sinusoidal forcing representative of PIE (Rowley River, MA).
+# Temperature: mean 10 °C, amplitude 12 °C, peak day ~209 (late July).
+# PAR: mean 29 000 000 µmol m-2 d-1, amplitude 16 000 000, peak day ~170.
+forcing:
+  constant:
+    n_steps: 18250           # 50 years × 365 d
+    dt_days: 1.0
+    start_time_days: 0.0
+
+    mean_sea_level: 0.0
+    mean_high_tide: 1.224    # PIE MHW
+    tidal_amplitude: 1.243
+    tidal_period_hours: 12.42
+
+    temperature: 10.0        # annual mean (sinusoidal forcing uses a fixed value here;
+                             # use forcing.steps for time-varying temperature)
+    precipitation_mm_d: 3.5
+    par_umol_m2_d: 29000000.0
+
+    creek_salinity_ppt: 22.0
+    freshwater_input_mm_d: 0.0
+    storm_surge_residual_m: 0.0
+
+    suspended_sediment_concentration: 0.015
+    fine_sediment_concentration: 0.004
+    external_pb210_supply: 0.0
+
+initial_state:
+  uniform_column:
+    n_layers: 20
+    total_thickness_m: 1.00
+    porosity: 0.65         # organic peat-like high-marsh soil
+    age_days: 0.0
+    fill_material: refractory_organic
+
+initial_ecohydrology_state:
+  root_zone_salinity_ppt: 15.0
+  aboveground_biomass_kg_m2: 0.50   # typical S. patens high-marsh biomass
+  belowground_biomass_kg_m2: 2.00
+  lai: 2.25                         # 0.50 × 4.5 lai_per_kg
+  litter_kg_m2: 0.0
+
+output:
+  file: run_spartina_patens_50yr.nc
+  write_time_series: true
+  write_column_snapshots: true
+  snapshot_times_days: [4564.0, 9131.0, 13696.0, 18262.0]
