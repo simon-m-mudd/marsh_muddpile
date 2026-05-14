@@ -167,9 +167,51 @@ python sensitivity/forcing_sensitivity.py --skip-runs   # plot only
 
 ---
 
+### `longterm_sensitivity.py`
+
+Full-factorial **200-year** sensitivity runs exploring long-term carbon
+accumulation and surface elevation change across five parameters.
+
+All 48 runs start from the same initial 1-m sediment column:
+
+| Material | Profile |
+|----------|---------|
+| Refractory organic | 10 % of solid volume, uniform with depth |
+| Labile organic | 10 % at surface, exponential decay (e-fold 0.075 m, ~2 % at 30 cm) |
+| Live roots | 10 % at surface, same exponential profile |
+| Sand | remainder |
+
+| Parameter | Values |
+|-----------|--------|
+| SSC (kg m⁻³) | 0.005 / 0.020 / 0.050 |
+| Distance from creek | 5 m / 20 m |
+| Starting elevation | 0.20 m MSL / 0.50 m MSL |
+| SLR rate | 2 mm yr⁻¹ / 5 mm yr⁻¹ |
+| Temperature mean (°C) | 18 / 22 |
+
+Total: **48 runs**, North Inlet harmonic tides, monthly forcing steps.
+Porewater and methane models are disabled to keep run times manageable.
+
+**Outputs** (`figures/`):
+
+- `longterm_total_carbon.png` — total organic carbon (kg m⁻²) vs time
+- `longterm_labile_carbon.png` — labile organic carbon (kg m⁻²) vs time
+- `longterm_labile_rate.png` — annual rate of labile carbon change (kg m⁻² yr⁻¹)
+- `longterm_elevation.png` — surface elevation (m MSL) vs time
+
+Each figure is a 2 × 2 panel grid (rows = temperature, columns = distance).
+Within each panel: colour = SSC, linestyle = SLR rate, linewidth = starting elevation.
+
+```bash
+python sensitivity/longterm_sensitivity.py --binary ./build/marsh_cli
+python sensitivity/longterm_sensitivity.py --skip-runs   # plot only, skip re-runs
+```
+
+---
+
 ## Common options
 
-All four scripts accept the same set of flags:
+All scripts accept the same set of flags:
 
 | Flag | Effect |
 |------|--------|
@@ -190,6 +232,7 @@ sensitivity/
     inner_cycle/       YAML configs and NetCDF outputs for inner_cycle_sensitivity
     gpp_params/        YAML configs and NetCDF outputs for gpp_parameter_sensitivity
     forcing/           YAML configs and NetCDF outputs for forcing_sensitivity
+    longterm/          YAML configs and NetCDF outputs for longterm_sensitivity (48 runs)
   figures/             All saved PNG figures
 ```
 

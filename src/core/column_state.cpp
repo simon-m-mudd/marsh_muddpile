@@ -50,6 +50,8 @@ void column_state::append_surface_layer(const Eigen::ArrayXd& deposited_mass)
         throw std::invalid_argument("deposited_mass size does not match number of materials");
     }
 
+    const double current_surface_elevation = get_surface_elevation();
+
     const int old_layers = n_layers();
     mass_.conservativeResize(old_layers + 1, Eigen::NoChange);
     mass_.row(old_layers) = deposited_mass.transpose();
@@ -64,7 +66,7 @@ void column_state::append_surface_layer(const Eigen::ArrayXd& deposited_mass)
 
     layer_thickness_(old_layers) = 0.0;
     layer_porosity_(old_layers) = 0.0;
-    layer_top_elevation_(old_layers) = get_surface_elevation();
+    layer_top_elevation_(old_layers) = current_surface_elevation;
     layer_age_(old_layers) = 0.0;
     porewater_nh4_umol_per_L_(old_layers) = 0.0;
     porewater_so4_umol_per_L_(old_layers) = 0.0;

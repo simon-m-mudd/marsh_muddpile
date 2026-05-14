@@ -55,6 +55,7 @@ private:
         int upper_layer_index);
 
     static void recompute_top_elevations(
-        column_state& state);
+        column_state& state,
+        double column_base_elevation);
 };
 }

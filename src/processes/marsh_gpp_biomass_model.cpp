@@ -86,6 +86,9 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
     const double hydroperiod_stress =
         compute_hydroperiod_stress(hydro, parameters);
 
+    const double inundation_range_stressor =
+        compute_inundation_range_stressor(hydro, parameters);
+
     const double salinity_stress =
         compute_salinity_stress(eco_state, parameters);
 
@@ -137,7 +140,8 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
         apar_umol_m2_d *
         temperature_modifier *
         hydroperiod_stress *
-        salinity_stress;
+        salinity_stress *
+        inundation_range_stressor;
 
     diagnostics.gpp_gC_m2_d =
         std::max(0.0, diagnostics.gpp_gC_m2_d);
@@ -366,6 +370,72 @@ double marsh_gpp_biomass_model::compute_hydroperiod_stress(
     return std::exp(-0.5 * normalized * normalized);
 }
 
+// Tent-function stressor enforcing the species' viable tidal elevation range.
+// Uses inundation fraction rather than raw elevation so real tide records and
+// storm-surge forcing are automatically incorporated without re-parameterisation.
+//
+// The function is:
+//   0                                  for f <= min_fraction  (above MHHW: too dry)
+//   (f - min) / (opt - min)            for min < f <= optimum (ascending limb)
+//   (max - f) / (max - opt)            for optimum < f < max  (descending limb)
+//   0                                  for f >= max_fraction  (below mean tide: too wet)
+//
+// Default parameters for Spartina alterniflora at North Inlet, SC
+// (tidal range ≈ 0.7 m, mean at 0.0 m MSL):
+//   min_fraction  = 0.01  — inundation ≈ 0 corresponds to surface at MHHW
+//   optimum       = 0.35  — ≈ 15 cm above mean tide, where peak biomass is observed
+//   max_fraction  = 0.50  — surface at mean tide level (50 % of time inundated)
+double marsh_gpp_biomass_model::compute_inundation_range_stressor(
+    const hydrology_diagnostics& hydro,
+    const parameter_set& parameters) const
+{
+    const double min_fraction =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_inundation_min_fraction",
+                0.01),
+            0.0,
+            1.0);
+
+    const double optimum_fraction =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_inundation_optimum_fraction",
+                0.35),
+            0.0,
+            1.0);
+
+    const double max_fraction =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_inundation_max_fraction",
+                0.50),
+            0.0,
+            1.0);
+
+    if (optimum_fraction <= min_fraction || optimum_fraction >= max_fraction)
+    {
+        return 0.0;
+    }
+
+    const double f = hydro.inundation_fraction;
+
+    if (f <= min_fraction || f >= max_fraction)
+    {
+        return 0.0;
+    }
+
+    if (f <= optimum_fraction)
+    {
+        return (f - min_fraction) / (optimum_fraction - min_fraction);
+    }
+
+    return (max_fraction - f) / (max_fraction - optimum_fraction);
+}
+
 // Exponential GPP reduction for root-zone salinity above a threshold.
 // Represents osmotic and ionic stress limiting carbon assimilation.
 double marsh_gpp_biomass_model::compute_salinity_stress(
@@ -528,11 +598,34 @@ double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
     const double cold_excess_c =
         std::max(0.0, cold_mortality_threshold_c - temperature_c);
 
+    // Extra mortality when inundation is below the minimum viable fraction
+    // (surface above MHHW: plants become too dry to survive).
+    const double low_inundation_threshold =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_low_inundation_mortality_threshold",
+                0.05),
+            0.0,
+            1.0);
+
+    const double low_inundation_slope =
+        std::max(
+            0.0,
+            get_parameter_or_default(
+                parameters,
+                "vegetation_low_inundation_mortality_slope_per_day",
+                0.10));
+
+    const double low_inundation_deficit =
+        std::max(0.0, low_inundation_threshold - hydro.inundation_fraction);
+
     return
         baseline_rate +
         cold_mortality_slope * cold_excess_c +
         hydro_slope * hydro_excess +
-        salinity_slope * salinity_excess;
+        salinity_slope * salinity_excess +
+        low_inundation_slope * low_inundation_deficit;
 }
 
 // Belowground mortality rate (d^-1): a baseline root-turnover rate plus linear
@@ -588,9 +681,30 @@ double marsh_gpp_biomass_model::compute_belowground_mortality_rate_per_day(
     const double salinity_excess =
         std::max(0.0, eco_state.root_zone_salinity_ppt - salinity_threshold);
 
+    const double low_inundation_threshold =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_low_inundation_mortality_threshold",
+                0.05),
+            0.0,
+            1.0);
+
+    const double low_inundation_slope =
+        std::max(
+            0.0,
+            get_parameter_or_default(
+                parameters,
+                "vegetation_low_inundation_mortality_slope_per_day",
+                0.10));
+
+    const double low_inundation_deficit =
+        std::max(0.0, low_inundation_threshold - hydro.inundation_fraction);
+
     return
         baseline_rate +
         hydro_slope * hydro_excess +
-        salinity_slope * salinity_excess;
+        salinity_slope * salinity_excess +
+        low_inundation_slope * low_inundation_deficit;
 }
 }

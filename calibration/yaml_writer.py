@@ -127,8 +127,8 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     # root allocation
     "root_efolding_depth_m": 0.10,
     "root_profile_normalize_to_column": 1.0,
-    "root_allocation_to_labile_fraction": 0.60,
-    "root_allocation_to_refractory_fraction": 0.40,
+    "root_allocation_to_labile_fraction": 0.90,
+    "root_allocation_to_refractory_fraction": 0.10,
 
     # TKE deposition
     "deposition_reference_biomass_g_m2": 500.0,
@@ -263,7 +263,7 @@ _DEFAULT_MATERIALS = [
         "category": "organic_refractory",
         "density": 1400.0,
         "allow_root_input": True,
-        "decay": {"k_0": 0.001, "gamma": 0.25, "temperature_sensitive": True},
+        "decay": {"k_0": 0.001, "gamma": 2.0, "temperature_sensitive": True},
     },
     {
         "name": "labile_organic",

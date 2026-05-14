@@ -5,7 +5,12 @@
 // Light-use efficiency (LUE) vegetation model for tidal marsh plants.
 //
 // Gross primary production is computed each time step as:
-//   GPP = LUE * APAR * f(temperature) * f(hydroperiod) * f(salinity)
+//   GPP = LUE * APAR * f(temperature) * f(hydroperiod) * f(salinity) * f(inundation_range)
+//
+// f(inundation_range) is a tent function of inundation fraction that enforces
+// the species' viable tidal elevation range: zero at MHHW (too dry) and zero
+// at mean tide level (permanently inundated), peaking at an intermediate
+// optimum. This prevents unbounded biomass accumulation above the tidal frame.
 //
 // NPP is partitioned between shoots and roots based on plant stress, with
 // capacity limits on each pool. Separate mortality rates (with a seasonal
@@ -69,6 +74,17 @@ private:
 
     // Gaussian GPP multiplier centred on the optimum inundation fraction.
     double compute_hydroperiod_stress(
+        const hydrology_diagnostics& hydro,
+        const parameter_set& parameters) const;
+
+    // Tent-function GPP multiplier that enforces the species' viable tidal
+    // elevation range. Returns 1 at the optimal inundation fraction, falling
+    // linearly to 0 at the lower bound (surface at MHHW, too dry) and the
+    // upper bound (surface at mean tide level, too wet). GPP is zero outside
+    // the range [min_fraction, max_fraction]. Parameterised in inundation
+    // fraction rather than absolute elevation so storm-surge forcing is
+    // automatically incorporated.
+    double compute_inundation_range_stressor(
         const hydrology_diagnostics& hydro,
         const parameter_set& parameters) const;
 

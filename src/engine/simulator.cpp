@@ -366,6 +366,17 @@ simulation_result simulator::run_forward(
         }
     }
 
+    // Always save the final column state as a snapshot so callers can read
+    // layer-resolved profiles (porosity, mass by material, top elevation) at
+    // the end of the run without storing per-step layer data.
+    if (n_steps > 0)
+    {
+        column_snapshot final_snap;
+        final_snap.model_time_days = forcing.at(n_steps - 1).model_time_days;
+        final_snap.state = state;
+        result.column_snapshots.push_back(std::move(final_snap));
+    }
+
     result.final_state = std::move(state);
     result.final_ecohydrology_state = std::move(eco_state);
 

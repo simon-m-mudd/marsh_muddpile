@@ -1,22 +1,48 @@
 # forcing_builder.py
 #
 # Builds a list of monthly forcing-step dicts from a PlotConfig.
-# Each step represents one calendar month using sinusoidal seasonal cycles
-# for temperature and PAR derived from the MetForcingParams.
+#
+# Two paths are available:
+#
+#   build_monthly_forcing(config)
+#       Synthetic sinusoidal forcing derived from MetForcingParams
+#       (temperature mean/amplitude/peak_day, PAR mean/amplitude/peak_day).
+#       Produces a perfectly repeating annual cycle with no interannual
+#       variability.
+#
+#   build_monthly_forcing_from_era5(config, era5_csv)
+#       Aggregates a daily ERA5 CSV (date, temperature_mean_c, par_umol_m2_d,
+#       precipitation_mm_d) to calendar-month means and uses those values
+#       directly.  Preserves interannual variability.  If the run duration
+#       exceeds the ERA5 record, the record is cycled from its start.
+#
+# ERA5_CSV maps site names to the project-relative CSV paths so callers
+# can do:  build_monthly_forcing_from_era5(config, ERA5_CSV["north_inlet"])
 #
 # The generated steps are written into the YAML 'forcing.steps' section by
 # yaml_writer.write_config().  Monthly resolution is a reasonable compromise
 # between capturing seasonal variation and keeping run times short.
 
 from __future__ import annotations
+import csv
 import math
-from typing import List
+from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Union
 
 from site_config import PlotConfig
 
 
 _DT_DAYS = 365.25 / 12.0   # nominal month length (days)
 _DAYS_IN_YEAR = 365.25
+
+# Project-root-relative paths to the ERA5 daily CSVs.
+_ERA5_DIR = Path(__file__).parent.parent / "era5_data"
+ERA5_CSV: Dict[str, Path] = {
+    "north_inlet": _ERA5_DIR / "era5_land_ni_1985_2024_daily.csv",
+    "pie":         _ERA5_DIR / "era5_land_pie_1985_2024_daily.csv",
+    "gce":         _ERA5_DIR / "era5_land_gce_1985_2024_daily.csv",
+}
 
 
 def _day_of_year(month_index: int) -> float:
@@ -84,5 +110,101 @@ def build_monthly_forcing(config: PlotConfig) -> List[dict]:
             "external_pb210_supply": 0.0,
         }
         steps.append(step)
+
+    return steps
+
+
+# ---------------------------------------------------------------------------
+# ERA5-driven forcing
+# ---------------------------------------------------------------------------
+
+def _read_era5_monthly(csv_path: Path) -> List[dict]:
+    """Read a daily ERA5 CSV and return a list of calendar-month aggregates.
+
+    Each element covers one (year, month) and contains the mean of all daily
+    values in that month.  The list is sorted chronologically.
+
+    Expected CSV columns: date, temperature_mean_c, par_umol_m2_d,
+    precipitation_mm_d.  Extra columns (temperature_max_c, etc.) are ignored.
+    """
+    monthly: Dict = defaultdict(lambda: {"temps": [], "pars": [], "precips": []})
+
+    with open(csv_path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            y, m, _ = row["date"].split("-")
+            key = (int(y), int(m))
+            monthly[key]["temps"].append(float(row["temperature_mean_c"]))
+            monthly[key]["pars"].append(float(row["par_umol_m2_d"]))
+            monthly[key]["precips"].append(float(row["precipitation_mm_d"]))
+
+    result = []
+    for (year, month) in sorted(monthly.keys()):
+        d = monthly[(year, month)]
+        n = len(d["temps"])
+        result.append({
+            "year": year,
+            "month": month,
+            "temperature": sum(d["temps"]) / n,
+            "par_umol_m2_d": max(0.0, sum(d["pars"]) / n),
+            "precipitation_mm_d": sum(d["precips"]) / n,
+        })
+    return result
+
+
+def build_monthly_forcing_from_era5(
+    config: PlotConfig,
+    era5_csv: Union[str, Path],
+) -> List[dict]:
+    """Return forcing-step dicts driven by actual ERA5 temperature and PAR.
+
+    Daily ERA5 values are aggregated to calendar-month means.  If
+    config.n_years exceeds the length of the ERA5 record the record is
+    cycled from its start, preserving within-year correlations.
+
+    Temperature, PAR, and precipitation come from the ERA5 CSV.  Everything
+    else (tidal amplitude/period, SSC, salinity, SLR) comes from config,
+    identical to build_monthly_forcing().
+
+    Parameters
+    ----------
+    config :
+        PlotConfig describing the site.
+    era5_csv :
+        Path to the daily ERA5 CSV for this site.  Use the ERA5_CSV dict for
+        the pre-built site paths, e.g.::
+
+            build_monthly_forcing_from_era5(config, ERA5_CSV["north_inlet"])
+    """
+    era5_months = _read_era5_monthly(Path(era5_csv))
+    n_era5 = len(era5_months)
+
+    n_months = config.n_years * 12
+    tides = config.tides
+    steps: List[dict] = []
+
+    for i in range(n_months):
+        rec = era5_months[i % n_era5]
+        model_time_days = (i + 1) * _DT_DAYS
+        year_elapsed = i / 12.0
+        slr = year_elapsed * config.sea_level_rise_m_yr
+
+        steps.append({
+            "model_time_days": round(model_time_days, 4),
+            "dt_days": round(_DT_DAYS, 4),
+            "mean_sea_level": round(tides.mean_sea_level_m + slr, 6),
+            "mean_high_tide": round(tides.mean_high_tide_m + slr, 6),
+            "tidal_amplitude": tides.tidal_amplitude_m,
+            "tidal_period_hours": tides.tidal_period_hours,
+            "temperature": round(rec["temperature"], 3),
+            "precipitation_mm_d": round(rec["precipitation_mm_d"], 4),
+            "par_umol_m2_d": round(rec["par_umol_m2_d"], 1),
+            "creek_salinity_ppt": tides.creek_salinity_ppt,
+            "freshwater_input_mm_d": config.met.freshwater_input_mm_d,
+            "storm_surge_residual_m": 0.0,
+            "suspended_sediment_concentration": tides.suspended_sediment_concentration_kg_m3,
+            "fine_sediment_concentration": tides.fine_sediment_concentration_kg_m3,
+            "external_pb210_supply": 0.0,
+        })
 
     return steps

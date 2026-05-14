@@ -326,6 +326,9 @@ void layer_merger::merge_adjacent_layers(
         ++new_index;
     }
 
+    const double column_base_elevation =
+        state.layer_top_elevation()(0) - state.layer_thickness()(0);
+
     state.resize(old_n_layers - 1, n_materials);
     state.mass() = new_mass;
     state.layer_thickness() = new_thickness;
@@ -336,13 +339,14 @@ void layer_merger::merge_adjacent_layers(
     state.porewater_so4() = new_so4;
     state.porewater_ch4() = new_ch4;
 
-    recompute_top_elevations(state);
+    recompute_top_elevations(state, column_base_elevation);
 }
 
 void layer_merger::recompute_top_elevations(
-    column_state& state)
+    column_state& state,
+    double column_base_elevation)
 {
-    double cumulative_top_elevation = 0.0;
+    double cumulative_top_elevation = column_base_elevation;
 
     for (int layer_index = 0; layer_index < state.n_layers(); ++layer_index)
     {

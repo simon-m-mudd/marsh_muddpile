@@ -137,7 +137,10 @@ void two_stage_compaction_model::update_compaction(
     //
     // This cumulative sum remains serial because each layer top elevation
     // depends on the thickness of all deeper layers.
-    double cumulative_top_elevation = 0.0;
+    const double column_base_elevation =
+        state.layer_top_elevation()(0) - state.layer_thickness()(0);
+
+    double cumulative_top_elevation = column_base_elevation;
     for (int layer_index = 0; layer_index < n_layers; ++layer_index)
     {
         cumulative_top_elevation += new_layer_thickness(layer_index);
