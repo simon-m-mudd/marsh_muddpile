@@ -201,12 +201,44 @@ void distance_flushing_salinity_model::update_salinity(
         (creek_salinity_ppt - current_salinity_ppt) /
         storage_modifier;
 
-    const double updated_salinity_ppt =
-        current_salinity_ppt +
-        forcing.dt_days *
-            (local_concentration_tendency_ppt_per_day +
-             salinity_relaxation_tendency_ppt_per_day +
-             subsurface_relaxation_tendency_ppt_per_day);
+    // Total relaxation rate toward creek salinity (d^-1).
+    // Both tidal exchange and subsurface diffusion relax S toward creek_salinity_ppt.
+    const double total_relaxation_rate_per_day =
+        (base_flushing_rate_per_day *
+             distance_modifier *
+             std::max(0.0, hydro.inundation_fraction) *
+             exchange_modifier +
+         subsurface_flushing_rate_per_day * distance_modifier) /
+        storage_modifier;
+
+    // Exact solution to the linear ODE:
+    //   dS/dt = source - rate * (S - creek)
+    // where source = local_concentration_tendency (ET minus precip)
+    //       rate   = total_relaxation_rate_per_day
+    //
+    // Equilibrium: S_eq = creek + source / rate  (when rate > 0)
+    // S(t+dt) = S_eq + (S0 - S_eq) * exp(-rate * dt)
+    //
+    // Falls back to forward-Euler only when rate == 0 (no flushing at all),
+    // where the exact and Euler solutions are identical.
+    double updated_salinity_ppt;
+    if (total_relaxation_rate_per_day > 0.0)
+    {
+        const double source_ppt_per_day =
+            local_concentration_tendency_ppt_per_day;   // already / storage_modifier
+        const double s_eq =
+            creek_salinity_ppt + source_ppt_per_day / total_relaxation_rate_per_day;
+        updated_salinity_ppt =
+            s_eq +
+            (current_salinity_ppt - s_eq) *
+                std::exp(-total_relaxation_rate_per_day * forcing.dt_days);
+    }
+    else
+    {
+        updated_salinity_ppt =
+            current_salinity_ppt +
+            forcing.dt_days * local_concentration_tendency_ppt_per_day;
+    }
 
     eco_state.root_zone_salinity_ppt =
         clamp(updated_salinity_ppt, min_salinity_ppt, max_salinity_ppt);

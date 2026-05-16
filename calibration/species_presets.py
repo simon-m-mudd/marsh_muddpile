@@ -99,8 +99,8 @@ SPARTINA_PATENS: Dict[str, float] = {
 
     # Root profile — shallower allocation than S. alterniflora
     "root_efolding_depth_m":                    0.07,
-    "root_allocation_to_labile_fraction":       0.50,
-    "root_allocation_to_refractory_fraction":   0.50,
+    "root_allocation_to_labile_fraction":       0.90,
+    "root_allocation_to_refractory_fraction":   0.10,
 }
 
 
@@ -166,8 +166,8 @@ JUNCUS_ROEMERIANUS: Dict[str, float] = {
 
     # Root profile — deeper root system than Spartina spp.
     "root_efolding_depth_m":                    0.12,
-    "root_allocation_to_labile_fraction":       0.40,
-    "root_allocation_to_refractory_fraction":   0.60,   # tough culm litter
+    "root_allocation_to_labile_fraction":       0.90,
+    "root_allocation_to_refractory_fraction":   0.10,
 }
 
 

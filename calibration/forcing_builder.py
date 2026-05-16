@@ -115,6 +115,63 @@ def build_monthly_forcing(config: PlotConfig) -> List[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Compact generated forcing block (preferred for new runs)
+# ---------------------------------------------------------------------------
+
+def build_generated_forcing_block(config: PlotConfig) -> dict:
+    """Return a compact dict for the YAML 'forcing.generated' block.
+
+    The C++ config_io expands this at load time into a full forcing series,
+    computing temperature and PAR from sinusoidal seasonal cycles (with optional
+    linear trends) and applying linear sea-level rise per step.  The YAML file
+    is therefore independent of run length — changing n_years only updates
+    n_steps; no step-list rewrite is needed.
+
+    Parameters
+    ----------
+    config :
+        PlotConfig describing the site.
+
+    Returns
+    -------
+    dict
+        Suitable for ``{"forcing": {"generated": <return value>}}``.
+    """
+    met = config.met
+    tides = config.tides
+    n_steps = config.n_years * 12
+
+    return {
+        "n_steps": n_steps,
+        "dt_days": round(_DT_DAYS, 4),
+        "start_time_days": 0.0,
+        # sea level
+        "initial_mean_sea_level": tides.mean_sea_level_m,
+        "sea_level_rise_rate_m_per_yr": config.sea_level_rise_m_yr,
+        # temperature seasonal cycle + optional trend
+        "temperature_mean_c": met.temperature_mean_c,
+        "temperature_amplitude_c": met.temperature_amplitude_c,
+        "temperature_peak_day": met.temperature_peak_day,
+        "temperature_trend_c_per_yr": met.temperature_trend_c_per_yr,
+        # PAR seasonal cycle + optional trend
+        "par_mean_umol_m2_d": met.par_mean_umol_m2_d,
+        "par_amplitude_umol_m2_d": met.par_amplitude_umol_m2_d,
+        "par_peak_day": met.par_peak_day,
+        "par_trend_umol_m2_d_per_yr": met.par_trend_umol_m2_d_per_yr,
+        # constant fields passed through to each step
+        "tidal_amplitude": tides.tidal_amplitude_m,
+        "tidal_period_hours": tides.tidal_period_hours,
+        "creek_salinity_ppt": tides.creek_salinity_ppt,
+        "suspended_sediment_concentration": tides.suspended_sediment_concentration_kg_m3,
+        "fine_sediment_concentration": tides.fine_sediment_concentration_kg_m3,
+        "precipitation_mm_d": met.precipitation_mean_mm_d,
+        "freshwater_input_mm_d": met.freshwater_input_mm_d,
+        "storm_surge_residual_m": 0.0,
+        "external_pb210_supply": 0.0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # ERA5-driven forcing
 # ---------------------------------------------------------------------------
 

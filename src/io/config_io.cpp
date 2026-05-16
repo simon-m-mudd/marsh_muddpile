@@ -37,6 +37,8 @@
 
 #include <Eigen/Core>
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -368,8 +370,94 @@ forcing_series parse_forcing_series(const YAML::Node& node)
         return forcing;
     }
 
+    if (node["generated"])
+    {
+        const YAML::Node& gen = node["generated"];
+
+        const int n_steps = get_required_scalar<int>(gen, "n_steps");
+        const double dt_days = get_optional_scalar<double>(gen, "dt_days", 30.4375);
+        const double start_time_days =
+            get_optional_scalar<double>(gen, "start_time_days", 0.0);
+
+        // sea level
+        const double initial_msl =
+            get_optional_scalar<double>(gen, "initial_mean_sea_level", 0.0);
+        const double slr_rate =
+            get_optional_scalar<double>(gen, "sea_level_rise_rate_m_per_yr", 0.0);
+
+        // temperature: sinusoidal seasonal cycle + optional long-term trend
+        const double temp_mean =
+            get_optional_scalar<double>(gen, "temperature_mean_c", 20.0);
+        const double temp_amp =
+            get_optional_scalar<double>(gen, "temperature_amplitude_c", 0.0);
+        const double temp_peak =
+            get_optional_scalar<double>(gen, "temperature_peak_day", 200.0);
+        const double temp_trend =
+            get_optional_scalar<double>(gen, "temperature_trend_c_per_yr", 0.0);
+
+        // PAR: sinusoidal seasonal cycle + optional long-term trend
+        const double par_mean =
+            get_optional_scalar<double>(gen, "par_mean_umol_m2_d", 0.0);
+        const double par_amp =
+            get_optional_scalar<double>(gen, "par_amplitude_umol_m2_d", 0.0);
+        const double par_peak =
+            get_optional_scalar<double>(gen, "par_peak_day", 172.0);
+        const double par_trend =
+            get_optional_scalar<double>(gen, "par_trend_umol_m2_d_per_yr", 0.0);
+
+        // all other fields (salinity, SSC, tidal params, etc.) come from the
+        // template parsed by parse_forcing_step; temperature, par, sea level,
+        // model_time_days, and dt_days are overridden per step below.
+        const forcing_step tmpl = parse_forcing_step(gen);
+
+        if (n_steps < 0)
+        {
+            throw std::runtime_error(
+                "forcing.generated.n_steps must be non-negative");
+        }
+
+        constexpr double two_pi = 2.0 * 3.14159265358979323846;
+        constexpr double days_per_year = 365.25;
+
+        for (int i = 0; i < n_steps; ++i)
+        {
+            // SLR applied at start of step (matches Python forcing_builder convention).
+            // T and PAR evaluated at mid-step for a more representative average.
+            const double step_start_days = start_time_days + i * dt_days;
+            const double step_mid_days   = step_start_days + 0.5 * dt_days;
+
+            const double year_at_start = step_start_days / days_per_year;
+            const double year_at_mid   = step_mid_days   / days_per_year;
+
+            // day-of-year drives the seasonal cycle
+            const double doy = std::fmod(step_mid_days, days_per_year);
+
+            const double temperature =
+                temp_mean +
+                temp_amp * std::cos(two_pi * (doy - temp_peak) / days_per_year) +
+                year_at_mid * temp_trend;
+
+            const double par = std::max(
+                0.0,
+                par_mean +
+                    par_amp * std::cos(two_pi * (doy - par_peak) / days_per_year) +
+                    year_at_mid * par_trend);
+
+            forcing_step step       = tmpl;
+            step.model_time_days    = start_time_days + (i + 1) * dt_days;
+            step.dt_days            = dt_days;
+            step.mean_sea_level     = initial_msl + year_at_start * slr_rate;
+            step.temperature        = temperature;
+            step.par_umol_m2_d      = par;
+
+            forcing.add_step(step);
+        }
+
+        return forcing;
+    }
+
     throw std::runtime_error(
-        "forcing section must contain either 'steps' or 'constant'");
+        "forcing section must contain either 'steps', 'constant', or 'generated'");
 }
 
 site_properties parse_site_properties(const YAML::Node& node)

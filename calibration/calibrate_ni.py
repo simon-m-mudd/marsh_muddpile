@@ -105,11 +105,11 @@ PARAM_BOUNDS: List[Tuple[float, float]] = [
     (0.10, 3.0),
     (1e-4, 5e-3),
     (1e-4, 1e-2),
-    (1e-5, 5e-4),
+    (1e-7, 1e-4),   # LUE: extended lower bound to cover calibrated 1.6e-6
 ]
 
-# Default starting point for Nelder-Mead.
-PARAM_DEFAULTS = [0.5, 0.001, 0.002, 2.5e-4]
+# Default starting point for Nelder-Mead (biomass-curve calibration, Morris 2013).
+PARAM_DEFAULTS = [0.95, 0.001, 0.002, 1.6e-6]
 
 
 # ---------------------------------------------------------------------------

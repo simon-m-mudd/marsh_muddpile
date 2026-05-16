@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from site_config import PlotConfig
-from forcing_builder import build_monthly_forcing
+from forcing_builder import build_generated_forcing_block
 from species_presets import get_species_parameters
 
 
@@ -72,7 +72,7 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "et_background_mm_d": 0.5,
     "et_temperature_base_c": 0.0,
     "et_temperature_coefficient_mm_d_per_c": 0.12,
-    "et_par_coefficient_mm_d_per_umol_m2_d": 1.0e-4,
+    "et_par_coefficient_mm_d_per_umol_m2_d": 3.0e-8,
     "et_cover_extinction_coefficient": 0.7,
     "et_kc_min": 0.2,
     "et_kc_max": 1.1,
@@ -92,7 +92,7 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
 
     # vegetation / GPP
     "vegetation_days_per_year": 365.0,
-    "vegetation_lue_gC_per_umol": 2.5e-4,
+    "vegetation_lue_gC_per_umol": 1.6e-6,   # reduced from 3.5e-4 so m/g ~ 0.05 at peak elevation
     "vegetation_carbon_use_efficiency": 0.5,
     "vegetation_biomass_carbon_fraction": 0.45,
     "vegetation_lai_light_extinction": 0.8,
@@ -101,14 +101,14 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "vegetation_max_lai": 6.0,
     "vegetation_temperature_optimum_c": 25.0,
     "vegetation_temperature_sigma_c": 10.0,
-    "vegetation_hydroperiod_optimum_fraction": 0.20,
-    "vegetation_hydroperiod_sigma_fraction": 0.20,
+    "vegetation_hydroperiod_optimum_fraction": 0.25,   # peak at ≈ 47 cm NAVD88 (Morris et al. 2013 NI)
+    "vegetation_hydroperiod_sigma_fraction": 0.18,   # half-Gaussian: controls right-limb (high-elevation) decline
     "vegetation_salinity_threshold_ppt": 20.0,
     "vegetation_salinity_stress_per_ppt": 0.03,
     "vegetation_shoot_allocation_min": 0.25,
     "vegetation_shoot_allocation_max": 0.65,
-    "vegetation_aboveground_capacity_kg_m2": 3.0,
-    "vegetation_belowground_capacity_kg_m2": 5.0,
+    "vegetation_aboveground_capacity_kg_m2": 0.95,   # RMSE-optimal vs Morris et al. (2013) NI data
+    "vegetation_belowground_capacity_kg_m2": 1.9,    # 2× aboveground
     "vegetation_aboveground_mortality_base_per_day": 0.001,
     "vegetation_aboveground_mortality_seasonal_amp_per_day": 0.0,
     "vegetation_mortality_peak_day": 300.0,
@@ -118,11 +118,18 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "vegetation_aboveground_hydroperiod_mortality_slope_per_day": 0.01,
     "vegetation_aboveground_salinity_mortality_threshold_ppt": 30.0,
     "vegetation_aboveground_salinity_mortality_slope_per_day_per_ppt": 0.0005,
-    "vegetation_belowground_mortality_base_per_day": 0.0005,
+    "vegetation_belowground_mortality_base_per_day": 2.74e-4,   # 10 % yr⁻¹ (Morris & Sundberg 2023)
     "vegetation_belowground_hydroperiod_mortality_threshold": 0.60,
     "vegetation_belowground_hydroperiod_mortality_slope_per_day": 0.005,
     "vegetation_belowground_salinity_mortality_threshold_ppt": 35.0,
     "vegetation_belowground_salinity_mortality_slope_per_day_per_ppt": 0.00025,
+    # inundation range stressor (Gaussian) — empirical bell-curve peak at optimum IF
+    # Replaces the earlier tent function (Morris et al. 2013; NI S. alterniflora defaults)
+    "vegetation_inundation_optimum_fraction": 0.25,  # IF at peak biomass elevation (~47 cm NAVD88)
+    "vegetation_inundation_sigma_fraction": 0.25,    # half-Gaussian: controls left-limb (low-elevation) decline
+    # low-inundation mortality — extra shoot+root loss when platform rises above tidal frame
+    "vegetation_low_inundation_mortality_threshold": 0.05,
+    "vegetation_low_inundation_mortality_slope_per_day": 0.10,
 
     # root allocation
     "root_efolding_depth_m": 0.10,
@@ -380,7 +387,6 @@ def write_config(
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-    forcing_steps = build_monthly_forcing(config)
     total_days = config.n_years * 365.25
 
     parameters = dict(_DEFAULT_PARAMETERS)
@@ -429,7 +435,7 @@ def write_config(
         "parameters": parameters,
         "materials": _DEFAULT_MATERIALS,
         "forcing": {
-            "steps": forcing_steps,
+            "generated": build_generated_forcing_block(config),
         },
         "initial_state": {
             "layers": initial_layers,

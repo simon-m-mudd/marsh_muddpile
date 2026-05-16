@@ -7,10 +7,11 @@
 // Gross primary production is computed each time step as:
 //   GPP = LUE * APAR * f(temperature) * f(hydroperiod) * f(salinity) * f(inundation_range)
 //
-// f(inundation_range) is a tent function of inundation fraction that enforces
-// the species' viable tidal elevation range: zero at MHHW (too dry) and zero
-// at mean tide level (permanently inundated), peaking at an intermediate
-// optimum. This prevents unbounded biomass accumulation above the tidal frame.
+// f(inundation_range) is a Gaussian function of inundation fraction centred on
+// an empirical optimum inundation fraction, producing a smooth bell-shaped
+// biomass-elevation response consistent with field observations (Morris et al.
+// 2013).  Unlike the earlier tent function it allows non-zero GPP across the
+// full tidal frame and imposes no hard elevation cutoffs.
 //
 // NPP is partitioned between shoots and roots based on plant stress, with
 // capacity limits on each pool. Separate mortality rates (with a seasonal
@@ -67,23 +68,27 @@ private:
         double lai,
         const parameter_set& parameters) const;
 
-    // Gaussian GPP multiplier centred on the optimum temperature.
+    // Gaussian GPP multiplier centred on the optimum temperature (symmetric —
+    // temperature stress applies symmetrically above and below the optimum).
     double compute_temperature_modifier(
         const forcing_step& forcing,
         const parameter_set& parameters) const;
 
-    // Gaussian GPP multiplier centred on the optimum inundation fraction.
+    // Half-Gaussian GPP multiplier (dry-side penalty only): returns 1 for
+    // IF >= optimum_fraction (wet side, no flooding limitation) and decays as
+    // a Gaussian for IF < optimum_fraction (dry/high-elevation side, reduced
+    // tidal nutrient delivery). Complementary to compute_inundation_range_stressor
+    // which handles the wet-side (low-elevation) decline.
     double compute_hydroperiod_stress(
         const hydrology_diagnostics& hydro,
         const parameter_set& parameters) const;
 
-    // Tent-function GPP multiplier that enforces the species' viable tidal
-    // elevation range. Returns 1 at the optimal inundation fraction, falling
-    // linearly to 0 at the lower bound (surface at MHHW, too dry) and the
-    // upper bound (surface at mean tide level, too wet). GPP is zero outside
-    // the range [min_fraction, max_fraction]. Parameterised in inundation
-    // fraction rather than absolute elevation so storm-surge forcing is
-    // automatically incorporated.
+    // Half-Gaussian GPP multiplier for flooding/anaerobic stress.  Returns 1.0
+    // for IF <= optimum_fraction (drier/higher platform — no penalty for too
+    // little flooding within the tidal frame) and decays as a Gaussian for
+    // IF > optimum_fraction (wetter/lower — anaerobic/flooding stress).
+    // Produces the asymmetric biomass-elevation curve characteristic of highly
+    // flood-tolerant species such as S. alterniflora (Morris et al. 2013).
     double compute_inundation_range_stressor(
         const hydrology_diagnostics& hydro,
         const parameter_set& parameters) const;

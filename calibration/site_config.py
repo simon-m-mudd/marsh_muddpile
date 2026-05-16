@@ -66,6 +66,11 @@ class MetForcingParams:
     par_amplitude_umol_m2_d: float = 13_000_000.0  # PLACEHOLDER: half-range
     par_peak_day: float = 172.0                 # PLACEHOLDER: summer solstice ~ day 172
 
+    # Long-term trends (applied as linear drift on top of the seasonal cycle).
+    # Useful for climate-change sensitivity experiments.
+    temperature_trend_c_per_yr: float = 0.0
+    par_trend_umol_m2_d_per_yr: float = 0.0
+
     # Precipitation
     precipitation_mean_mm_d: float = 3.0   # PLACEHOLDER
     freshwater_input_mm_d: float = 0.0     # PLACEHOLDER
@@ -137,23 +142,28 @@ class PlotConfig:
 # ---------------------------------------------------------------------------
 
 def north_inlet_default_tides() -> TideRecord:
-    """North Inlet, SC 
-    Nearest gauge: NOAA 8661070 (North Inlet, SC).
+    """North Inlet, SC
+    Harmonic constituents from NOAA 8661070 (Springmaid Pier / North Inlet, SC),
+    then damped by factor 0.85 to account for the amplitude attenuation observed
+    between the NOAA open-water gauge and the local creek gauge inside the marsh
+    (site-specific analysis of in-situ vs NOAA water level records).
+    Phases are unchanged — damping is amplitude-only.
     """
+    _damp = 0.85
     t = TideRecord()
     t.mean_sea_level_m            = 0.0
-    t.mean_high_tide_m            = 0.762
-    t.tidal_amplitude_m           = 0.766
+    t.mean_high_tide_m            = round(0.762 * _damp, 4)   # 0.648 m
+    t.tidal_amplitude_m           = round(0.766 * _damp, 4)   # 0.651 m
     t.tidal_period_hours          = 12.42
-    t.M2_amplitude_m              = 0.73
+    t.M2_amplitude_m              = round(0.730 * _damp, 4)   # 0.621 m
     t.M2_phase_deg                = 357.9
-    t.S2_amplitude_m              = 0.123
+    t.S2_amplitude_m              = round(0.123 * _damp, 4)   # 0.105 m
     t.S2_phase_deg                = 20.3
-    t.N2_amplitude_m              = 0.171
+    t.N2_amplitude_m              = round(0.171 * _damp, 4)   # 0.145 m
     t.N2_phase_deg                = 340.6
-    t.K1_amplitude_m              = 0.102
+    t.K1_amplitude_m              = round(0.102 * _damp, 4)   # 0.087 m
     t.K1_phase_deg                = 187.6
-    t.O1_amplitude_m              = 0.076
+    t.O1_amplitude_m              = round(0.076 * _damp, 4)   # 0.065 m
     t.O1_phase_deg                = 191.4
     t.creek_salinity_ppt          = 28.0
     t.suspended_sediment_concentration_kg_m3 = 0.020  # PLACEHOLDER

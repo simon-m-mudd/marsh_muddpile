@@ -1,0 +1,53 @@
+# Digitized data from Morris et al. (2013) Oceanography,
+# "Contributions of organic and inorganic matter to sediment volume and
+#  accretion in tidal wetlands at steady state"
+# Data from 2008 field measurements; figure also reproduced in Miller et al. (2019)
+# Remote Sensing with the parabolic fit B = 14.8*E - 0.157*E^2 + 598.
+# Figure shows aboveground biomass (dry g m-2) vs pipe elevation (cm NAVD88).
+#
+# Values digitized by eye from the published figure; positional uncertainty is
+# approximately +/-2 cm in elevation and +/-30 g m-2 in biomass.
+# biomass_se_g_m2 is the half-height of the plotted error bar (estimated standard error).
+#
+# Fitted curves (from Miller et al. 2019 figure):
+#   north_inlet (NI):  B = 14.8*E - 0.157*E^2 + 598  [g m-2];  r2=0.73, p=0.0001
+#   plum_island  (PI): slope = -5.3 g m-2 cm-1;                 r2=0.85, p=0.001
+#
+# Tidal datums from the figure:
+#   NI  MHW  ~70 cm NAVD88
+#   PI  MHW ~120 cm NAVD88
+#
+# Column definitions
+#   site                 : north_inlet | plum_island
+#   elevation_cm_navd88  : pipe elevation (cm above NAVD88)
+#   biomass_g_m2         : mean aboveground biomass (dry g m-2)
+#   biomass_se_g_m2      : estimated standard error (half error-bar height)
+#
+# NI data cover both the ascending limb (-35 to ~73 cm) and the descending
+# right limb (~80 to ~110 cm); the parabola zero is near 125 cm NAVD88.
+# NI MHW ~70 cm; PI MHW ~120 cm.
+site,elevation_cm_navd88,biomass_g_m2,biomass_se_g_m2
+site,elevation_cm_NAVD88,biomass_g_dry_m^-2,error_bar_approx
+north_inlet,-30,0,20
+north_inlet,-20,270,70
+north_inlet,0,640,90
+north_inlet,10,830,70
+north_inlet,20,560,110
+north_inlet,30,1020,100
+north_inlet,40,730,120
+north_inlet,50,1060,90
+north_inlet,60,1180,80
+north_inlet,70,670,110
+north_inlet,80,980,85
+north_inlet,90,520,80
+north_inlet,100,410,100
+north_inlet,110,390,130
+plum_island,65,1440,60
+plum_island,80,1110,85
+plum_island,95,1160,150
+plum_island,110,1020,140
+plum_island,125,850,50
+plum_island,140,880,90
+plum_island,155,860,50
+plum_island,185,710,125
+
