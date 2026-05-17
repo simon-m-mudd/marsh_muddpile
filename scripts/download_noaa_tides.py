@@ -20,6 +20,7 @@ import argparse
 import csv
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -33,19 +34,15 @@ def parse_date(s):
     return datetime.strptime(s, "%Y-%m-%d")
 
 
-def month_chunks(start, end):
-    """
-    Yield monthly chunks [chunk_start, chunk_end].
-    NOAA CO-OPS requests are safest in <= 1 month chunks for many products.
+def _noaa_chunks(start, end, max_days=365):
+    """Yield (chunk_start, chunk_end) pairs respecting NOAA API date-range limits.
+
+    Hourly products (interval='h', product='hourly_height') allow 365 days per
+    request; 6-minute products are capped at 31 days.
     """
     current = start
     while current <= end:
-        if current.month == 12:
-            next_month = datetime(current.year + 1, 1, 1)
-        else:
-            next_month = datetime(current.year, current.month + 1, 1)
-
-        chunk_end = min(end, next_month - timedelta(days=1))
+        chunk_end = min(end, current + timedelta(days=max_days - 1))
         yield current, chunk_end
         current = chunk_end + timedelta(days=1)
 
@@ -182,28 +179,32 @@ def run_timeseries(args):
         print("Error: end date must be on or after start date.", file=sys.stderr)
         sys.exit(1)
 
-    all_rows = []
+    is_hourly = args.interval == "h" or args.product == "hourly_height"
+    max_days = 365 if is_hourly else 31
+    chunks = list(_noaa_chunks(start, end, max_days=max_days))
+    print(f"Downloading {len(chunks)} chunk(s) in parallel ...")
 
-    for chunk_start, chunk_end in month_chunks(start, end):
-        print(f"Downloading {chunk_start.date()} to {chunk_end.date()} ...")
-        try:
-            rows = fetch_chunk(
-                station=args.station,
-                begin_date=chunk_start,
-                end_date=chunk_end,
-                product=args.product,
-                datum=args.datum,
-                units=args.units,
-                time_zone=args.time_zone,
-                interval=args.interval,
-            )
-            all_rows.extend(rows)
-            time.sleep(0.2)
-        except Exception as e:
-            print(
-                f"Failed for chunk {chunk_start.date()} to {chunk_end.date()}: {e}",
-                file=sys.stderr,
-            )
+    def _fetch(chunk_start, chunk_end):
+        return chunk_start, fetch_chunk(
+            station=args.station,
+            begin_date=chunk_start,
+            end_date=chunk_end,
+            product=args.product,
+            datum=args.datum,
+            units=args.units,
+            time_zone=args.time_zone,
+            interval=args.interval,
+        )
+
+    all_rows = []
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(_fetch, s, e) for s, e in chunks]
+        for fut in futures:
+            try:
+                chunk_start, rows = fut.result()
+                all_rows.extend(rows)
+            except Exception as e:
+                print(f"Failed for chunk: {e}", file=sys.stderr)
 
     write_csv(all_rows, args.output)
     print(f"Saved {len(all_rows)} records to {args.output}")

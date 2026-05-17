@@ -51,6 +51,7 @@ import math
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import StringIO
 
@@ -155,23 +156,21 @@ def find_nearest_coops(lat, lon):
     return str(row["station_id"]), str(row["name"]), float(row["dist"])
 
 
-def _month_chunks(start, end):
+def _noaa_chunks(start, end, max_days=365):
+    """Yield (chunk_start, chunk_end) pairs; hourly products allow 365 days per request."""
     current = start
     while current <= end:
-        if current.month == 12:
-            next_month = datetime(current.year + 1, 1, 1)
-        else:
-            next_month = datetime(current.year, current.month + 1, 1)
-        chunk_end = min(end, next_month - timedelta(days=1))
+        chunk_end = min(end, current + timedelta(days=max_days - 1))
         yield current, chunk_end
         current = chunk_end + timedelta(days=1)
 
 
 def fetch_coops_hourly(station_id, start, end,
                        product="hourly_height", datum="MLLW", units="metric"):
-    """Download CO-OPS hourly water levels; return tidy DataFrame."""
-    all_rows = []
-    for chunk_start, chunk_end in _month_chunks(start, end):
+    """Download CO-OPS hourly water levels in parallel year-sized chunks; return tidy DataFrame."""
+    chunks = list(_noaa_chunks(start, end))
+
+    def _fetch(chunk_start, chunk_end):
         params = {
             "product":     product,
             "application": "coastal_wl_compare",
@@ -185,17 +184,23 @@ def fetch_coops_hourly(station_id, start, end,
         }
         r = requests.get(NOAA_DATA_URL, params=params, timeout=60)
         r.raise_for_status()
-        payload = r.json()
-        if "error" in payload:
-            msg = payload["error"]
-            if isinstance(msg, dict):
-                msg = msg.get("message", str(msg))
-            print(f"  [{station_id}] {chunk_start.date()}–{chunk_end.date()}: {msg}",
-                  file=sys.stderr)
-            time.sleep(0.2)
-            continue
-        all_rows.extend(payload.get("data", []))
-        time.sleep(0.2)
+        return chunk_start, r.json()
+
+    all_rows = []
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(_fetch, s, e) for s, e in chunks]
+        for fut in futures:
+            try:
+                chunk_start, payload = fut.result()
+                if "error" in payload:
+                    msg = payload["error"]
+                    if isinstance(msg, dict):
+                        msg = msg.get("message", str(msg))
+                    print(f"  [{station_id}] {chunk_start.date()}: {msg}", file=sys.stderr)
+                    continue
+                all_rows.extend(payload.get("data", []))
+            except Exception as exc:
+                print(f"  [{station_id}] chunk failed: {exc}", file=sys.stderr)
 
     if not all_rows:
         return pd.DataFrame()

@@ -4,6 +4,7 @@ import math
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from datetime import datetime, timedelta
 
@@ -35,14 +36,11 @@ def parse_date(s):
     return datetime.strptime(s, "%Y-%m-%d")
 
 
-def month_chunks(start, end):
+def _noaa_chunks(start, end, max_days=365):
+    """Yield (chunk_start, chunk_end) pairs. Hourly: 365 days max; 6-min: 31 days max."""
     current = start
     while current <= end:
-        if current.month == 12:
-            next_month = datetime(current.year + 1, 1, 1)
-        else:
-            next_month = datetime(current.year, current.month + 1, 1)
-        chunk_end = min(end, next_month - timedelta(days=1))
+        chunk_end = min(end, current + timedelta(days=max_days - 1))
         yield current, chunk_end
         current = chunk_end + timedelta(days=1)
 
@@ -152,9 +150,11 @@ def fetch_coops_stations(station_type="waterlevels"):
 
 def fetch_coops_timeseries(station, start, end, product="water_level",
                            datum="MLLW", units="metric", time_zone="gmt", interval=None):
-    all_rows = []
+    is_hourly = interval == "h" or product == "hourly_height"
+    max_days = 365 if is_hourly else 31
+    chunks = list(_noaa_chunks(start, end, max_days=max_days))
 
-    for chunk_start, chunk_end in month_chunks(start, end):
+    def _fetch(chunk_start, chunk_end):
         params = {
             "product": product,
             "application": "ELM_multi_water_levels",
@@ -169,24 +169,25 @@ def fetch_coops_timeseries(station, start, end, product="water_level",
             params["datum"] = datum
         if interval:
             params["interval"] = interval
-
         r = requests.get(NOAA_DATA_URL, params=params, timeout=60)
         r.raise_for_status()
         payload = r.json()
-
         if "error" in payload:
             msg = payload["error"]
             if isinstance(msg, dict):
                 msg = msg.get("message", str(msg))
-            raise RuntimeError(f"NOAA error for {chunk_start.date()} to {chunk_end.date()}: {msg}")
+            raise RuntimeError(f"NOAA error {chunk_start.date()}–{chunk_end.date()}: {msg}")
+        return payload.get("data", [])
 
-        rows = payload.get("data", [])
-        for row in rows:
-            row["source"] = "coops"
-            row["station_id"] = str(station)
-
-        all_rows.extend(rows)
-        time.sleep(0.2)
+    all_rows = []
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(_fetch, s, e) for s, e in chunks]
+        for fut in futures:
+            rows = fut.result()  # propagates RuntimeError on API error
+            for row in rows:
+                row["source"] = "coops"
+                row["station_id"] = str(station)
+            all_rows.extend(rows)
 
     return pd.DataFrame(all_rows)
 
