@@ -130,6 +130,7 @@ void run_from_yaml(const std::string& config_file, bool silent)
             loaded.simulation,
             loaded.materials,
             loaded.parameters,
+            loaded.output,
             loaded.forcing,
             loaded.site,
             loaded.initial_state,

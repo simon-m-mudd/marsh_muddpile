@@ -10,7 +10,7 @@ A single 20-year simulation is run with North Inlet-like forcing (M2-only
 sine tide).  Parameters are adjusted so the root:shoot ratio is ~3-4,
 consistent with field observations of Spartina alterniflora:
 
-    vegetation_aboveground_capacity_kg_m2  1.5   (reduced from default 3.0)
+    vegetation_aboveground_capacity_kg_m2  1.5   (elevated above calibrated NI default 0.95 to produce a root:shoot ratio of ~3-4)
     vegetation_belowground_capacity_kg_m2  5.0   (unchanged)
     vegetation_shoot_allocation_max        0.35  (35 % to shoots, reduced from 0.65)
     vegetation_shoot_allocation_min        0.20  (20 % to shoots, reduced from 0.25)
@@ -100,7 +100,7 @@ _STEM      = "carbon_pool_test"
 # Parameter overrides for realistic root : shoot ratio (~3-4)
 # ---------------------------------------------------------------------------
 _CARBON_TEST_PARAMS = {
-    "vegetation_aboveground_capacity_kg_m2":  1.5,   # reduced from default 3.0
+    "vegetation_aboveground_capacity_kg_m2":  1.5,   # elevated above NI default (0.95) to give root:shoot ≈ 3-4
     "vegetation_belowground_capacity_kg_m2":  5.0,   # unchanged
     "vegetation_shoot_allocation_max":         0.35,  # 35 % to shoots (was 0.65)
     "vegetation_shoot_allocation_min":         0.20,  # 20 % to shoots (was 0.25)
@@ -208,7 +208,7 @@ def _write_config(config: PlotConfig, output_path: Path) -> None:
             "deposition_model_name":         "edge_distance_deposition",
             "root_allocation_model_name":    "exponential_root_allocation",
             "decay_model_name":              "marsh_decay",
-            "compaction_model_name":         "two_stage_compaction",
+            "compaction_model_name":           "mixing_compaction",
         },
         "site": {
             "distance_from_creek_m":  config.distance_from_creek_m,

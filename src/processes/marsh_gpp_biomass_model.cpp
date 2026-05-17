@@ -124,13 +124,20 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
                 "vegetation_aboveground_capacity_kg_m2",
                 3.0));
 
-    const double belowground_capacity_kg_m2 =
+    const double root_shoot_ratio =
         std::max(
             1.0e-6,
             get_parameter_or_default(
                 parameters,
-                "vegetation_belowground_capacity_kg_m2",
-                5.0));
+                "vegetation_root_shoot_ratio",
+                2.0));
+
+    // Dynamic belowground capacity tracks the root:shoot target.
+    // When aboveground is zero the cap collapses to near-zero so roots decay
+    // at their turnover rate rather than accumulating against a fixed ceiling.
+    const double belowground_capacity_kg_m2 =
+        std::max(1.0e-6,
+                 eco_state.aboveground_biomass_kg_m2 * root_shoot_ratio);
 
     const double apar_umol_m2_d =
         fpar * std::max(0.0, forcing.par_umol_m2_d);
@@ -199,13 +206,10 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
             hydro,
             parameters);
 
-    // ODE parameters — computed once, reused for the exact solution and the
-    // integrated litter calculation.
-    //
-    // Exact solution to the first-order linear ODE
+    // Aboveground ODE: exact solution to
     //   dbio/dt = g*(1 - bio/cap) - m*bio  =  g - B_eff*bio
     // where B_eff = g/cap + m  and  bio_eq = g/B_eff.
-    // This avoids the forward-Euler overshoot that occurs with monthly timesteps.
+    // This avoids forward-Euler overshoot with monthly timesteps.
     const double g_above =
         diagnostics.npp_gC_m2_d * shoot_allocation_fraction /
         (1000.0 * biomass_carbon_fraction);
@@ -215,8 +219,6 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
     const double g_below =
         diagnostics.npp_gC_m2_d * root_allocation_fraction /
         (1000.0 * biomass_carbon_fraction);
-    const double B_eff_below =
-        g_below / belowground_capacity_kg_m2 + belowground_mortality_rate_per_day;
 
     const double bio0_above = eco_state.aboveground_biomass_kg_m2;
     const double bio0_below = eco_state.belowground_biomass_kg_m2;
@@ -229,32 +231,50 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
             bio_eq + (bio0_above - bio_eq) * std::exp(-B_eff_above * forcing.dt_days));
     }
 
-    if (B_eff_below > 0.0)
+    // Belowground ODE — two regimes to prevent winter cap-collapse from killing
+    // roots/rhizomes. The root:shoot target only constrains growth; it never
+    // accelerates mortality when aboveground biomass is seasonally low.
+    //
+    // Growth regime (bio < cap):
+    //   dbio/dt = g*(1 - bio/cap) - m*bio  →  logistic approach to target
+    //
+    // Decay regime (bio >= cap, i.e. shoots died back, cap has shrunk):
+    //   dbio/dt = -m*bio  →  pure turnover at the natural belowground rate;
+    //   rhizomes persist through winter and are not driven to zero by shoot death.
+    double litter_below_kg_m2 = 0.0;
+    if (bio0_below < belowground_capacity_kg_m2)
     {
-        const double bio_eq = g_below / B_eff_below;
+        const double B_eff_below =
+            g_below / belowground_capacity_kg_m2 + belowground_mortality_rate_per_day;
+        if (B_eff_below > 0.0)
+        {
+            const double bio_eq = g_below / B_eff_below;
+            eco_state.belowground_biomass_kg_m2 = std::max(
+                0.0,
+                bio_eq + (bio0_below - bio_eq) * std::exp(-B_eff_below * forcing.dt_days));
+            litter_below_kg_m2 =
+                (belowground_mortality_rate_per_day / B_eff_below) *
+                std::max(0.0, g_below * forcing.dt_days + bio0_below -
+                              eco_state.belowground_biomass_kg_m2);
+        }
+    }
+    else
+    {
+        // Roots/rhizomes above the current root:shoot target: no new growth,
+        // purely decay at the natural turnover rate.
+        const double m = belowground_mortality_rate_per_day;
         eco_state.belowground_biomass_kg_m2 = std::max(
-            0.0,
-            bio_eq + (bio0_below - bio_eq) * std::exp(-B_eff_below * forcing.dt_days));
+            0.0, bio0_below * std::exp(-m * forcing.dt_days));
+        litter_below_kg_m2 = bio0_below - eco_state.belowground_biomass_kg_m2;
     }
 
-    // Exact integrated mortality from the ODE mass-balance identity:
+    // Aboveground litter from the exact ODE mass-balance identity:
     //   integral_0^dt m*B(t) dt = (m / B_eff) * (g*dt + B0 - B_final)
-    //
-    // Using this instead of the Euler estimate m*B0*dt prevents litter from
-    // exceeding actual biomass loss when mortality is high and growth is low
-    // (e.g., winter senescence with monthly timesteps where m*dt >> 1).
     const double litter_above_kg_m2 =
         (B_eff_above > 0.0)
         ? (aboveground_mortality_rate_per_day / B_eff_above) *
           std::max(0.0, g_above * forcing.dt_days + bio0_above -
                         eco_state.aboveground_biomass_kg_m2)
-        : 0.0;
-
-    const double litter_below_kg_m2 =
-        (B_eff_below > 0.0)
-        ? (belowground_mortality_rate_per_day / B_eff_below) *
-          std::max(0.0, g_below * forcing.dt_days + bio0_below -
-                        eco_state.belowground_biomass_kg_m2)
         : 0.0;
 
     eco_state.litter_kg_m2 += litter_above_kg_m2 + litter_below_kg_m2;

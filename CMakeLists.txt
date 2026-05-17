@@ -184,6 +184,7 @@ add_library(marsh_model_lib
     src/processes/hydro_salinity_decomposition_modifier_model.cpp
 
     src/processes/two_stage_compaction_model.cpp
+    src/processes/mixing_compaction_model.cpp
     src/processes/first_order_decay_model.cpp
     src/processes/marsh_decay_model.cpp
     src/processes/exponential_root_allocation_model.cpp

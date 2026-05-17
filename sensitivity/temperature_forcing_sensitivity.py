@@ -265,7 +265,7 @@ def _write_config(output_path: Path, forcing_steps: List[dict],
             "deposition_model_name":         "edge_distance_deposition",
             "root_allocation_model_name":    "exponential_root_allocation",
             "decay_model_name":              "marsh_decay",
-            "compaction_model_name":         "two_stage_compaction",
+            "compaction_model_name":           "mixing_compaction",
         },
         "site": {
             "distance_from_creek_m":  DISTANCE_FROM_CREEK_M,

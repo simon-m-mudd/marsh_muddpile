@@ -217,7 +217,7 @@ def _write_and_run(
             "deposition_model_name":          "edge_distance_deposition",
             "root_allocation_model_name":     "exponential_root_allocation",
             "decay_model_name":               "marsh_decay",
-            "compaction_model_name":          "two_stage_compaction",
+            "compaction_model_name":           "mixing_compaction",
             "porewater_chemistry_model_name": "none",
             "methane_model_name":             "none",
         },
@@ -331,10 +331,10 @@ def _scan(cli_binary: str, force: bool) -> tuple:
     print()
     print(f"  Miller (2019) parabola RMSE = {parabola_rmse*1000:.1f} g m⁻²")
     print(f"  Best model RMSE             = {results[0][0]*1000:.1f} g m⁻²")
-    print(f"  Current params (K=1.20, σ_H=0.18, σ_R=0.25) RMSE = ", end="")
+    print(f"  Current params (K=0.95, σ_H=0.18, σ_R=0.25) RMSE = ", end="")
     # find current params in results
     for rmse, k, sh, sr, _ in results:
-        if abs(k - 1.20) < 0.01 and abs(sh - 0.18) < 0.01 and abs(sr - 0.25) < 0.01:
+        if abs(k - 0.95) < 0.01 and abs(sh - 0.18) < 0.01 and abs(sr - 0.25) < 0.01:
             print(f"{rmse*1000:.1f} g m⁻²")
             break
     else:

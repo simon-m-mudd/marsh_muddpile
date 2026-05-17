@@ -13,10 +13,11 @@
 // 2013).  Unlike the earlier tent function it allows non-zero GPP across the
 // full tidal frame and imposes no hard elevation cutoffs.
 //
-// NPP is partitioned between shoots and roots based on plant stress, with
-// capacity limits on each pool. Separate mortality rates (with a seasonal
-// cycle for aboveground tissue) are applied and the ecohydrology state is
-// updated in-place.
+// NPP is partitioned between shoots and roots based on plant stress. The
+// aboveground pool has a fixed capacity parameter. The belowground pool has
+// no fixed cap: instead its target is aboveground_biomass * root_shoot_ratio,
+// so roots track the shoot biomass dynamically. Separate mortality rates are
+// applied and the ecohydrology state is updated in-place.
 //
 // References:
 //   Monteith, J.L., 1972. Solar radiation and productivity in tropical

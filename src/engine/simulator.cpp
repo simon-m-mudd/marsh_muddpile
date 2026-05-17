@@ -25,6 +25,7 @@
 #include "marsh_model/engine/simulator.hpp"
 
 #include "marsh_model/core/decay_fluxes.hpp"
+#include "marsh_model/core/output_config.hpp"
 #include "marsh_model/processes/methane_model.hpp"
 #include "marsh_model/engine/layer_merger.hpp"
 #include "marsh_model/engine/surface_property_summariser.hpp"
@@ -82,6 +83,7 @@ simulation_result simulator::run_forward(
     const simulation_config&,
     const material_catalog& catalog,
     const parameter_set& parameters,
+    const output_config& output_cfg,
     const forcing_series& forcing,
     const site_properties& site,
     column_state initial_state,
@@ -98,6 +100,12 @@ simulation_result simulator::run_forward(
         (n_steps > 0) ? forcing.at(n_steps - 1).model_time_days : 0.0;
     constexpr double progress_interval_days = 91.25;  // ~3 months
     double next_progress_days = progress_interval_days;
+
+    // Build a sorted copy of requested snapshot times for O(1) lookup
+    std::vector<double> snap_times_sorted = output_cfg.snapshot_times_days;
+    std::sort(snap_times_sorted.begin(), snap_times_sorted.end());
+    std::size_t next_snap_idx = 0;
+    int snap_step_counter = 0;
 
     // legacy / existing diagnostics kept for CLI compatibility
     auto& model_time_days_ts = result.time_series["model_time_days"];
@@ -359,6 +367,33 @@ simulation_result simulator::run_forward(
         result.total_mass_by_material_time_series.emplace_back(
             mass_by_mat.data(), mass_by_mat.data() + mass_by_mat.size());
 
+        // Mid-run column snapshots — snapshot_every_n_steps
+        ++snap_step_counter;
+        bool save_snap = false;
+        if (output_cfg.snapshot_every_n_steps > 0 &&
+            (snap_step_counter % output_cfg.snapshot_every_n_steps) == 0)
+        {
+            save_snap = true;
+        }
+        // Mid-run column snapshots — snapshot_times_days (within half a step)
+        if (!snap_times_sorted.empty() && next_snap_idx < snap_times_sorted.size())
+        {
+            const double half_dt = (step.dt_days > 0.0) ? step.dt_days * 0.5 : 16.0;
+            while (next_snap_idx < snap_times_sorted.size() &&
+                   step.model_time_days >= snap_times_sorted[next_snap_idx] - half_dt)
+            {
+                save_snap = true;
+                ++next_snap_idx;
+            }
+        }
+        if (save_snap)
+        {
+            column_snapshot snap;
+            snap.model_time_days = step.model_time_days;
+            snap.state = state;
+            result.column_snapshots.push_back(std::move(snap));
+        }
+
         if (progress_cb && step.model_time_days >= next_progress_days)
         {
             progress_cb(step.model_time_days, total_time_days);
@@ -366,10 +401,9 @@ simulation_result simulator::run_forward(
         }
     }
 
-    // Always save the final column state as a snapshot so callers can read
-    // layer-resolved profiles (porosity, mass by material, top elevation) at
-    // the end of the run without storing per-step layer data.
-    if (n_steps > 0)
+    // Always append a final snapshot if none have been saved, so callers can
+    // read layer-resolved profiles at end-of-run without per-step storage.
+    if (result.column_snapshots.empty() && n_steps > 0)
     {
         column_snapshot final_snap;
         final_snap.model_time_days = forcing.at(n_steps - 1).model_time_days;

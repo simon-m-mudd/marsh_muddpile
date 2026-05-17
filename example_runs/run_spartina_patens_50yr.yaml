@@ -126,7 +126,7 @@ parameters:
   vegetation_shoot_allocation_max: 0.60
 
   vegetation_aboveground_capacity_kg_m2: 1.2   # shorter stature
-  vegetation_belowground_capacity_kg_m2: 4.5   # dense root mat
+  vegetation_root_shoot_ratio: 3.75   # dense root mat; belowground target = aboveground * R
 
   vegetation_aboveground_mortality_base_per_day: 8.0e-4
   vegetation_aboveground_mortality_seasonal_amp_per_day: 0.0
@@ -245,7 +245,7 @@ materials:
     density: 1400.0
     allow_root_input: true
     decay:
-      k_0: 0.001
+      k_0: 0.0
       gamma: 0.25
       temperature_sensitive: true
   - name: labile_organic

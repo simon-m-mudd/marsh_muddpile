@@ -37,6 +37,7 @@
 
 #include "marsh_model/processes/identity_compaction_model.hpp"
 #include "marsh_model/processes/two_stage_compaction_model.hpp"
+#include "marsh_model/processes/mixing_compaction_model.hpp"
 
 #include <stdexcept>
 
@@ -172,6 +173,11 @@ std::shared_ptr<compaction_model> process_factory::create_compaction_model(
     if (name == "two_stage_compaction")
     {
         return std::make_shared<two_stage_compaction_model>();
+    }
+
+    if (name == "mixing_compaction")
+    {
+        return std::make_shared<mixing_compaction_model>();
     }
 
     throw std::invalid_argument("unknown compaction model: " + name);

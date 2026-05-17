@@ -270,7 +270,10 @@ _DEFAULT_MATERIALS = [
         "category": "organic_refractory",
         "density": 1400.0,
         "allow_root_input": True,
-        "decay": {"k_0": 0.001, "gamma": 2.0, "temperature_sensitive": True},
+        # k_0 = 0.0: refractory carbon does not decay on marsh timescales.
+        # Calibrated at North Inlet; non-zero values produce unrealistically low
+        # deep OM fractions (half-life 1.9 yr at k_0=0.001/d).
+        "decay": {"k_0": 0.0, "gamma": 2.0, "temperature_sensitive": True},
     },
     {
         "name": "labile_organic",
@@ -423,7 +426,7 @@ def write_config(
             "deposition_model_name": "edge_distance_deposition",
             "root_allocation_model_name": "exponential_root_allocation",
             "decay_model_name": "marsh_decay",
-            "compaction_model_name": "two_stage_compaction",
+            "compaction_model_name": "mixing_compaction",
             "porewater_chemistry_model_name": "nh4_porewater",
             "methane_model_name": "sulfate_methane",
         },

@@ -23,6 +23,7 @@
 #include "marsh_model/core/forcing_series.hpp"
 #include "marsh_model/core/material_catalog.hpp"
 #include "marsh_model/core/parameter_set.hpp"
+#include "marsh_model/core/output_config.hpp"
 #include "marsh_model/core/simulation_config.hpp"
 #include "marsh_model/core/simulation_result.hpp"
 #include "marsh_model/core/site_properties.hpp"
@@ -70,6 +71,7 @@ public:
         const simulation_config& config,
         const material_catalog& catalog,
         const parameter_set& parameters,
+        const output_config& output_cfg,
         const forcing_series& forcing,
         const site_properties& site,
         column_state initial_state,
