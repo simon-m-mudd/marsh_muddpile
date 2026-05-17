@@ -4,29 +4,26 @@ plot_core_depth_profiles.py
 Find sediment cores near a lat/lon and plot depth profiles for requested
 attributes. Depth 0 is at the surface (top of core).
 
-Usage:
-    python plot_core_depth_profiles.py --lat 51.5 --lon -0.1 --radius 50 \
-        --attrs dry_bulk_density fraction_organic_matter excess_pb210_activity
+By default loads from the CCN synthesis CSV files (CCN_cores.csv +
+CCN_depthseries.csv).  Pass --fgb to use a pre-merged FlatGeobuf instead.
 
-    python plot_core_depth_profiles.py --lat 51.5 --lon -0.1 --radius 50 \
-        --attrs cs137_activity total_pb210_activity --outdir figures/
+Usage:
+    # North Inlet (default)
+    python3 plot_core_depth_profiles.py
+
+    # Custom location with CCN data
+    python3 plot_core_depth_profiles.py --lat 31.342025 --lon -81.371261 \
+        --attrs fraction_organic_matter excess_pb210_activity --outdir figures
+
+    # Use a pre-merged FGB instead of CCN CSVs
+    python3 plot_core_depth_profiles.py --fgb core_data/merged_all.fgb \
+        --lat 33.33 --lon -79.20 --attrs fraction_organic_matter
 
 Available attributes (depth-varying):
     dry_bulk_density, fraction_organic_matter, fraction_carbon,
     excess_pb210_activity, total_pb210_activity, cs137_activity,
     ra226_activity, pb214_activity, bi214_activity,
     be7_activity, c14_age, delta_c13, age
-
-For north inlet:
-    python3 query_cores_by_location.py --lat 33.331659 --lon -79.198208
-    python3 plot_core_depth_profiles.py --lat 33.331659 --lon -79.198208 \ 
-        --attrs fraction_organic_matter excess_pb210_activity --outdir figures
-
-for GIA
-    python3 query_cores_by_location.py --lat 31.342025 --lon -81.371261
-    python3 plot_core_depth_profiles.py --lat 31.342025 --lon -81.371261 --attrs fraction_organic_matter --outdir figures
-                   
-               
 """
 
 import argparse
@@ -83,15 +80,61 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return np.abs(dist_m) / 1000.0
 
 
-def load_data(fgb_path: str) -> gpd.GeoDataFrame:
+def load_fgb(fgb_path: str) -> gpd.GeoDataFrame:
     path = Path(fgb_path)
     if not path.exists():
         sys.exit(f"Error: file not found: {fgb_path}")
     return gpd.read_file(fgb_path)
 
 
+_MARSH_VEGETATION_CLASSES  = {"emergent", "emergent marsh", "marsh"}
+_EXCLUDED_SALINITY_CLASSES = {"fresh", "oligohaline"}
+
+
+def load_ccn_data(cores_csv: str, depthseries_csv: str,
+                  species_csv: str | None = None) -> gpd.GeoDataFrame:
+    """Join CCN cores metadata + species with depthseries; return GeoDataFrame."""
+    for p in (cores_csv, depthseries_csv):
+        if not Path(p).exists():
+            sys.exit(f"Error: CCN file not found: {p}")
+
+    cores = pd.read_csv(cores_csv, low_memory=False)
+    ds    = pd.read_csv(depthseries_csv, low_memory=False)
+
+    # Aggregate per-core species into a JSON list string matching _parse_species format
+    if species_csv and Path(species_csv).exists():
+        import json
+        sp = pd.read_csv(species_csv, low_memory=False)
+        sp_agg = (
+            sp.groupby("core_id")["species_code"]
+            .apply(lambda x: json.dumps(sorted(x.dropna().unique().tolist())))
+            .reset_index()
+            .rename(columns={"species_code": "species_code_list"})
+        )
+        cores = cores.merge(sp_agg, on="core_id", how="left")
+
+    core_cols = [
+        "study_id", "site_id", "core_id",
+        "latitude", "longitude",
+        "elevation", "elevation_datum",
+        "vegetation_class", "salinity_class",
+        "habitat", "country", "admin_division",
+        "year", "month", "species_code_list",
+    ]
+    core_cols = [c for c in core_cols if c in cores.columns]
+    merged = ds.merge(cores[core_cols], on="core_id", how="left")
+
+    gdf = gpd.GeoDataFrame(
+        merged,
+        geometry=gpd.points_from_xy(merged["longitude"], merged["latitude"]),
+        crs="EPSG:4326",
+    )
+    return gdf
+
+
 def find_cores_in_radius(
-    gdf: gpd.GeoDataFrame, lat: float, lon: float, radius_km: float
+    gdf: gpd.GeoDataFrame, lat: float, lon: float, radius_km: float,
+    marsh_only: bool = True,
 ) -> gpd.GeoDataFrame:
     core_locs = (
         gdf[["core_id", "latitude", "longitude"]]
@@ -108,12 +151,33 @@ def find_cores_in_radius(
     ]
     result = gdf[gdf["core_id"].isin(nearby_ids["core_id"])].copy()
     result = result.merge(nearby_ids, on="core_id", how="left")
+
+    if marsh_only and "vegetation_class" in result.columns:
+        veg_ok = (
+            result["vegetation_class"]
+            .str.strip()
+            .str.lower()
+            .isin(_MARSH_VEGETATION_CLASSES)
+        )
+        result = result[veg_ok].copy()
+
+    if marsh_only and "salinity_class" in result.columns:
+        sal_col = result["salinity_class"].str.strip().str.lower()
+        sal_ok  = sal_col.isna() | (~sal_col.isin(_EXCLUDED_SALINITY_CLASSES))
+        result  = result[sal_ok].copy()
+
     return result
 
 
 def get_depth_midpoint(grp: pd.DataFrame) -> pd.Series:
-    """Midpoint depth for each sample row (cm from surface)."""
-    return (grp["depth_min"] + grp["depth_max"]) / 2.0
+    """Midpoint depth for each sample row (cm from surface).
+
+    If depth_min/depth_max are absent or NaN (e.g. bulk surface samples),
+    falls back to 0 so the point is plotted at the surface rather than dropped.
+    """
+    d_min = grp["depth_min"].fillna(0) if "depth_min" in grp.columns else pd.Series(0, index=grp.index)
+    d_max = grp["depth_max"].fillna(d_min) if "depth_max" in grp.columns else d_min
+    return (d_min + d_max) / 2.0
 
 
 def _parse_species(raw) -> str:
@@ -144,16 +208,24 @@ def _fmt_2sig(value) -> str:
     return f"{float(value):.2g}"
 
 
+def _is_spartina(core_id: str, core_data: gpd.GeoDataFrame) -> bool:
+    """True if any species entry for this core contains 'Spartina'."""
+    import json
+    row = core_data[core_data["core_id"] == core_id].iloc[0]
+    raw = row.get("species_code_list", None)
+    if pd.isna(raw) or str(raw).strip() in ("", "[]"):
+        return False
+    try:
+        names = json.loads(str(raw))
+    except (json.JSONDecodeError, ValueError):
+        names = [s.strip().strip('"') for s in str(raw).strip("[]").split(",")]
+    return any("Spartina" in str(n) for n in names)
+
+
 def core_label(core_id: str, grp: pd.DataFrame, dist_km: float) -> str:
-    """
-    Build a multi-line legend label:
-      core_id (dist km)
-      species | elev X.XX m DATUM | SLA X.X
-    """
+    """Build a legend label: core_id (dist km) / species | elev"""
     row = grp.iloc[0]
-
     species = _parse_species(row.get("species_code_list"))
-
     elev = row.get("elevation")
     datum = row.get("elevation_datum")
     if pd.notna(elev):
@@ -162,12 +234,8 @@ def core_label(core_id: str, grp: pd.DataFrame, dist_km: float) -> str:
             elev_str += f" {datum}"
     else:
         elev_str = "elev n/a"
-
-    sla = row.get("SLA Trend")
-    sla_str = f"SLA {_fmt_2sig(sla)} mm/yr"
-
-    meta = " | ".join(filter(None, [species, elev_str, sla_str]))
-    return f"{core_id} ({dist_km:.0f} km)\n{meta}" if meta else f"{core_id} ({dist_km:.0f} km)"
+    meta = " | ".join(filter(None, [species, elev_str]))
+    return f"{core_id} ({dist_km:.1f} km)\n{meta}" if meta else f"{core_id} ({dist_km:.1f} km)"
 
 
 def get_axis_label(attr: str, units_present: set) -> str:
@@ -179,13 +247,21 @@ def get_axis_label(attr: str, units_present: set) -> str:
     return label
 
 
+_GREY_NON_SPARTINA = "#000000"
+_SPARTINA_CMAP     = matplotlib.colormaps.get_cmap("tab10")
+
+
 def plot_profiles_for_attribute(
     attr: str,
     core_data: gpd.GeoDataFrame,
     ax: plt.Axes,
     max_cores: int = 20,
 ):
-    """Plot depth profiles for one attribute across all nearby cores."""
+    """Plot depth profiles for one attribute.
+
+    Spartina alterniflora / Spartina cores are drawn in distinct tab10 colours.
+    All other cores are drawn in light grey behind them.
+    """
     _, has_err, err_col = ATTR_CONFIG.get(attr, (attr, False, None))
     if err_col and err_col not in core_data.columns:
         has_err = False
@@ -201,7 +277,6 @@ def plot_profiles_for_attribute(
         ax.set_title(attr)
         return
 
-    # Sort by distance so closest cores get the clearest colours
     dist_map = (
         core_data[["core_id", "distance_km"]]
         .drop_duplicates("core_id")
@@ -211,13 +286,14 @@ def plot_profiles_for_attribute(
     if len(cores_with_data) > max_cores:
         cores_with_data = cores_with_data[:max_cores]
 
-    cmap = matplotlib.colormaps.get_cmap("tab20")
-    colors = [cmap(i % 20) for i in range(len(cores_with_data))]
+    # Split into Spartina (coloured) and other (grey); grey drawn first
+    spartina_ids = [c for c in cores_with_data if _is_spartina(c, core_data)]
+    other_ids    = [c for c in cores_with_data if c not in spartina_ids]
 
     units_seen: set = set()
     unit_col = UNIT_COLS.get(attr)
 
-    for color, core_id in zip(colors, cores_with_data):
+    def _draw(core_id, color, zorder, alpha=1.0):
         grp = core_data[core_data["core_id"] == core_id].copy()
         grp = grp.sort_values("depth_min")
         dist = dist_map.get(core_id, 0)
@@ -227,20 +303,24 @@ def plot_profiles_for_attribute(
         values = grp[attr]
 
         if unit_col and unit_col in grp.columns:
-            u = grp[unit_col].dropna().unique()
-            units_seen.update(u)
+            units_seen.update(grp[unit_col].dropna().unique())
 
+        kw = dict(color=color, zorder=zorder, alpha=alpha)
         if has_err and err_col:
             errs = grp[err_col].fillna(0)
-            ax.errorbar(
-                values, depth,
-                xerr=errs,
-                fmt="o-", color=color, label=label,
-                markersize=3, linewidth=0.8, elinewidth=0.6, capsize=2,
-            )
+            ax.errorbar(values, depth, xerr=errs, fmt="o-", label=label,
+                        markersize=3, linewidth=0.9, elinewidth=0.6, capsize=2, **kw)
         else:
-            ax.plot(values, depth, "o-", color=color, label=label,
-                    markersize=3, linewidth=0.8)
+            ax.plot(values, depth, "o-", label=label,
+                    markersize=3, linewidth=0.9, **kw)
+
+    # Grey non-Spartina behind
+    for cid in other_ids:
+        _draw(cid, color=_GREY_NON_SPARTINA, zorder=1, alpha=0.7)
+
+    # Coloured Spartina on top
+    for i, cid in enumerate(spartina_ids):
+        _draw(cid, color=_SPARTINA_CMAP(i % 10), zorder=2)
 
     xlabel = get_axis_label(attr, units_seen)
     ax.set_xlabel(xlabel)
@@ -249,9 +329,8 @@ def plot_profiles_for_attribute(
     ax.set_title(attr.replace("_", " "))
     ax.axhline(0, color="k", linewidth=0.4, linestyle="--")
 
-    n_cores_shown = len(cores_with_data)
-    ncol = 1 if n_cores_shown <= 6 else 2
-    ax.legend(fontsize=5, loc="best", ncol=ncol, framealpha=0.5, labelspacing=0.6)
+    ncol = 1 if len(cores_with_data) <= 6 else 2
+    ax.legend(fontsize=6, loc="best", ncol=ncol, framealpha=0.5, labelspacing=0.5)
 
 
 def plot_all_attributes(
@@ -325,35 +404,58 @@ def list_available_attributes():
         print(f"  {attr:<35} {label}{err_info}")
 
 
+_CCN_DIR = Path(__file__).parent.parent / "core_data" / "CCN_synthesis"
+
+# North Inlet, SC — NOAA gauge 8661070 lat/lon
+_NI_LAT = 33.331659
+_NI_LON = -79.198208
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Plot sediment core depth profiles near a lat/lon."
     )
-    parser.add_argument("--lat", type=float, required=True)
-    parser.add_argument("--lon", type=float, required=True)
+    parser.add_argument("--lat", type=float, default=_NI_LAT,
+                        help=f"Centre latitude (default: {_NI_LAT}, North Inlet)")
+    parser.add_argument("--lon", type=float, default=_NI_LON,
+                        help=f"Centre longitude (default: {_NI_LON}, North Inlet)")
     parser.add_argument(
-        "--radius", type=float, default=50.0,
-        help="Search radius in km (default: 50)"
+        "--radius", type=float, default=16.0,
+        help="Search radius in km (default: 16)",
     )
     parser.add_argument(
         "--attrs", nargs="+",
-        default=["dry_bulk_density", "fraction_organic_matter",
-                 "excess_pb210_activity", "cs137_activity"],
-        help="Attribute(s) to plot (space-separated). Run --list-attrs to see options.",
+        default=["fraction_organic_matter", "excess_pb210_activity",
+                 "fraction_carbon", "dry_bulk_density"],
+        help="Attribute(s) to plot. Run --list-attrs to see options.",
     )
     parser.add_argument(
-        "--fgb",
-        default=str(Path(__file__).parent.parent / "core_data" / "merged_all.fgb"),
-        help="Path to merged_all.fgb",
+        "--fgb", default=None,
+        help="Use a pre-merged FlatGeobuf instead of CCN CSVs.",
+    )
+    parser.add_argument(
+        "--ccn-cores",
+        default=str(_CCN_DIR / "CCN_cores.csv"),
+        help="CCN cores CSV (default: core_data/CCN_synthesis/CCN_cores.csv)",
+    )
+    parser.add_argument(
+        "--ccn-depthseries",
+        default=str(_CCN_DIR / "CCN_depthseries.csv"),
+        help="CCN depthseries CSV (default: core_data/CCN_synthesis/CCN_depthseries.csv)",
+    )
+    parser.add_argument(
+        "--ccn-species",
+        default=str(_CCN_DIR / "CCN_species.csv"),
+        help="CCN species CSV (default: core_data/CCN_synthesis/CCN_species.csv)",
     )
     parser.add_argument(
         "--outdir",
         default=str(Path(__file__).parent.parent / "viz" / "core_profiles"),
-        help="Directory for output figures (default: ../viz/core_profiles/)",
+        help="Directory for output figures (default: viz/core_profiles/)",
     )
     parser.add_argument(
         "--max-cores", type=int, default=20,
-        help="Maximum number of cores to plot per attribute (closest first, default: 20)",
+        help="Maximum cores per attribute panel (default: 20)",
     )
     parser.add_argument(
         "--list-attrs", action="store_true",
@@ -365,8 +467,12 @@ def main():
         list_available_attributes()
         return
 
-    gdf = load_data(args.fgb)
-    nearby = find_cores_in_radius(gdf, args.lat, args.lon, args.radius)
+    if args.fgb:
+        gdf = load_fgb(args.fgb)
+    else:
+        gdf = load_ccn_data(args.ccn_cores, args.ccn_depthseries, args.ccn_species)
+
+    nearby = find_cores_in_radius(gdf, args.lat, args.lon, args.radius, marsh_only=True)
 
     if nearby.empty:
         print(f"No cores found within {args.radius} km of ({args.lat}, {args.lon}).")
