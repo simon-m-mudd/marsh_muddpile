@@ -486,6 +486,7 @@ def _plot_variable(
     ylabel: str,
     title: str,
     outpath: Optional[Path],
+    zoom_window: Optional[tuple] = None,   # (t_start, t_end) for inset; None = no inset
 ) -> None:
     """4 × 2 panel figure (rows = temperature × starting elevation, cols = distance)."""
     nrow = len(_ROW_COMBOS)   # 4
@@ -496,17 +497,46 @@ def _plot_variable(
     for ri, (dt, elev) in enumerate(_ROW_COMBOS):
         for ci, dist in enumerate(DISTANCE_VALUES):
             ax = axes[ri, ci]
+
+            # Optional zoom inset — lower-right corner
+            ax_inset = None
+            if zoom_window is not None:
+                ax_inset = ax.inset_axes([0.55, 0.05, 0.43, 0.42])
+                ax_inset.tick_params(labelsize=5)
+                ax_inset.grid(True, linewidth=0.2, alpha=0.4)
+
             for p, data in data_map.items():
                 if p.temp_offset != dt or p.elevation != elev or p.distance != dist:
                     continue
+                x = np.asarray(data[x_key])
+                y = np.asarray(data[y_key])
+                mask = x >= 5.0
                 ax.plot(
-                    data[x_key],
-                    data[y_key],
+                    x[mask],
+                    y[mask],
                     color=_SSC_COLOURS[p.ssc],
                     linestyle=_SLR_STYLES[p.slr],
                     linewidth=_LINE_WIDTH,
                     alpha=0.85,
                 )
+                if ax_inset is not None:
+                    z0, z1 = zoom_window
+                    zm = (x >= z0) & (x <= z1)
+                    if zm.any():
+                        ax_inset.plot(
+                            x[zm], y[zm],
+                            color=_SSC_COLOURS[p.ssc],
+                            linestyle=_SLR_STYLES[p.slr],
+                            linewidth=0.9,
+                            alpha=0.85,
+                        )
+
+            if ax_inset is not None:
+                z0, z1 = zoom_window
+                ax_inset.set_xlim(z0, z1)
+                ax_inset.set_xlabel(f"yr {z0:.0f}–{z1:.0f}", fontsize=5, labelpad=1)
+                ax_inset.xaxis.set_major_locator(plt.MaxNLocator(4, integer=True))
+
             ax.set_title(
                 f"{_TEMP_OFFSET_LABELS[dt]},  z₀ = {elev:.2f} m,  d = {dist:.0f} m",
                 fontsize=8,
@@ -546,7 +576,7 @@ def _plot_elevation_with_mhw(
     ncol = len(DISTANCE_VALUES)   # 2
     fig, axes = plt.subplots(nrow, ncol, figsize=(12, 14), sharex=True, sharey=True)
 
-    t_ref = np.linspace(0, N_YEARS, 500)
+    t_ref = np.linspace(5, N_YEARS, 500)
 
     for ri, (dt, elev) in enumerate(_ROW_COMBOS):
         for ci, dist in enumerate(DISTANCE_VALUES):
@@ -561,9 +591,11 @@ def _plot_elevation_with_mhw(
             for p, data in data_map.items():
                 if p.temp_offset != dt or p.elevation != elev or p.distance != dist:
                     continue
+                t_yr = np.asarray(data["t_yr"])
+                mask = t_yr >= 5.0
                 ax.plot(
-                    data["t_yr"],
-                    data["surface_elevation_m"],
+                    t_yr[mask],
+                    np.asarray(data["surface_elevation_m"])[mask],
                     color=_SSC_COLOURS[p.ssc],
                     linestyle=_SLR_STYLES[p.slr],
                     linewidth=_LINE_WIDTH,
@@ -709,6 +741,7 @@ def _plot_all(results_raw: Dict[RunParams, Path], save: bool) -> None:
         ylabel="Labile C rate (kg m⁻² yr⁻¹)",
         title="Rate of labile carbon change",
         outpath=FIGURE_DIR / "longterm_labile_rate.png" if save else None,
+        zoom_window=(N_YEARS - 3, N_YEARS),
     )
 
     _plot_elevation_with_mhw(data_map, mhw_offset, save)

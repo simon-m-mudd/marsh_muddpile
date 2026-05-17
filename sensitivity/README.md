@@ -3,10 +3,10 @@
 Scripts for numerical and parameter sensitivity analysis of the marsh_muddpile
 model.  Each script is self-contained and can be run from the project root.
 
-All scripts use a **pure M2 sinusoidal tide** (no spring-neap variability) and
-**North Inlet ERA5-derived meteorological forcing** as the reference
-configuration, unless otherwise stated.  The deposition model is
-`edge_distance_deposition` throughout.
+All scripts use **North Inlet ERA5-derived meteorological forcing** as the
+reference configuration unless otherwise stated.  The deposition model is
+`edge_distance_deposition` and the compaction model is `mixing_compaction`
+(depth-dependent mixing law calibrated to CCN synthesis data) throughout.
 
 ---
 
@@ -16,210 +16,308 @@ configuration, unless otherwise stated.  The deposition model is
 
 Tests how the **outer forcing timestep** affects a 50-year simulation.
 
-The outer timestep (`dt_days` in `forcing.steps`) controls how frequently
-climate and tidal statistics (temperature, PAR, suspended sediment
-concentration, salinity) are updated.  Five timesteps are tested:
-
-| Label | dt (days) |
-|-------|-----------|
-| 1 d | 1 |
-| 7 d | 7 |
-| monthly | 30.4 |
-| quarterly | 91.3 |
-| annual | 365.25 |
-
-The `water_level_substeps_per_step` parameter is scaled proportionally so
-every run maintains **20 substeps per tidal cycle**, keeping the inundation
-fraction estimate consistent across timesteps.
+Five timesteps are tested (1 d / 7 d / monthly / quarterly / annual).
+`water_level_substeps_per_step` is scaled proportionally so every run
+maintains 20 substeps per tidal cycle.
 
 **Outputs** (`figures/`):
-
-- `timestep_sensitivity_timeseries.png` — surface elevation and total column OC
-  over 50 years, one line per timestep
-- `timestep_sensitivity_last_year.png` — aboveground and live belowground
-  biomass over the last year of the run
+`timestep_sensitivity_timeseries.png`, `timestep_sensitivity_last_year.png`
 
 ```bash
 python sensitivity/timestep_sensitivity.py --binary ./build/marsh_cli
-python sensitivity/timestep_sensitivity.py --skip-runs   # plot only, skip re-runs
 ```
 
 ---
 
 ### `inner_cycle_sensitivity.py`
 
-Tests how the **inner tidal substep count** affects results, with the outer
-forcing timestep fixed at **1 day**.
-
-Within each forcing step, the `composite_water_level_model` samples water level
-at `water_level_substeps_per_step` evenly-spaced time points and counts the
-fraction above the marsh surface.  This `inundation_fraction` is used by the
-GPP, salinity, and ET models.  For a high-marsh site briefly inundated each
-tide, too few substeps per tidal cycle causes the inundation fraction to be
-poorly estimated (coarse quantisation: 0 %, 25 %, 50 %, ...).
-
-Note: the `edge_distance_deposition` model is **not** affected by this
-parameter — it loops over every tidal cycle independently and uses an
-analytical arcsine formula for inundation fraction (see the main `readme.md`
-Timestepping section for details).
-
-Seven substep densities are tested (number of water-level samples per 12.42 h
-tidal cycle):
-
-2 / 4 / 8 / 16 / 32 / 64 / 128
+Tests how the **inner tidal substep count** affects results at fixed outer
+timestep (1 day).  Seven substep densities are tested: 2 / 4 / 8 / 16 / 32 /
+64 / 128 samples per tidal cycle.
 
 **Outputs** (`figures/`):
-
-- `inner_cycle_timeseries.png` — surface elevation and total column OC over 50
-  years
-- `inner_cycle_last_year.png` — aboveground and live belowground biomass over
-  the last year
-- `inner_cycle_inundation.png` — annual mean inundation fraction, showing
-  convergence with substep count (the most sensitive diagnostic to this
-  parameter)
+`inner_cycle_timeseries.png`, `inner_cycle_last_year.png`,
+`inner_cycle_inundation.png`
 
 ```bash
 python sensitivity/inner_cycle_sensitivity.py --binary ./build/marsh_cli
-python sensitivity/inner_cycle_sensitivity.py --skip-runs
 ```
 
 ---
 
 ### `gpp_parameter_sensitivity.py`
 
-Tests the effect of the four vegetation parameters that are optimised during
-North Inlet GPP calibration (see `calibration/calibrate_ni.py`).
+Tests the four vegetation parameters optimised during North Inlet GPP
+calibration (aboveground capacity, base mortality, cold-mortality slope, LUE),
+each swept across three values in log space around the calibrated default.
+Total: 12 runs × 10 years.
 
-Each parameter is varied across three values while all others are held at the
-`yaml_writer` defaults.  The three test values are placed symmetrically around
-the calibration default in log space:
-
-```
-low  = sqrt(lower_bound × default)
-mid  = calibration default
-high = sqrt(default × upper_bound)
-```
-
-| Parameter | Low | Mid (default) | High |
-|-----------|-----|---------------|------|
-| Aboveground capacity (kg m⁻²) | 0.224 | 0.5 | 1.22 |
-| Base mortality (d⁻¹) | 3.16×10⁻⁴ | 1×10⁻³ | 2.24×10⁻³ |
-| Cold mortality slope (d⁻¹ °C⁻¹) | 4.47×10⁻⁴ | 2×10⁻³ | 4.47×10⁻³ |
-| LUE (gC μmol⁻¹) | 5×10⁻⁵ | 2.5×10⁻⁴ | 3.54×10⁻⁴ |
-
-Runs: 10 years, monthly forcing, sine M2 tide, elevation 0.30 m.
-Total: 12 runs (4 parameters × 3 values).
-
-**Outputs** (`figures/`) — one figure per parameter, each with two subplots:
-
-- Top: aboveground biomass over the **last year** (seasonal cycle)
-- Bottom: belowground root mortality rate (`belowground_mortality_kg_m2_d`,
-  kg m⁻² d⁻¹) over the **full 10-year time series**
-
-```
-figures/gpp_sensitivity_capacity.png
-figures/gpp_sensitivity_mort_base.png
-figures/gpp_sensitivity_cold_slope.png
-figures/gpp_sensitivity_lue.png
-```
+**Outputs** (`figures/`):
+`gpp_sensitivity_capacity.png`, `gpp_sensitivity_mort_base.png`,
+`gpp_sensitivity_cold_slope.png`, `gpp_sensitivity_lue.png`
 
 ```bash
 python sensitivity/gpp_parameter_sensitivity.py --binary ./build/marsh_cli
-python sensitivity/gpp_parameter_sensitivity.py --skip-runs
 ```
 
 ---
 
 ### `forcing_sensitivity.py`
 
-Tests the effect of two environmental forcing variables on vegetation and
-sediment dynamics over a **10-year** simulation.
-
-**Mean annual air temperature (°C):** 8 / 18 / 28
-(cool temperate → warm temperate → subtropical)
-
-**Creek salinity (ppt):** 5 / 20 / 35
-(mesohaline → polyhaline → euhaline)
-
-Each parameter is swept while all others are held at the North Inlet /
-`yaml_writer` defaults.  For salinity runs the initial root-zone salinity is
-set to match the creek salinity, eliminating any spin-up transient from
-mismatched initial and boundary conditions.
-
-Total runs: 2 variables × 3 values = 6
+Tests mean annual air temperature (8 / 18 / 28 °C) and creek salinity (5 / 20
+/ 35 ppt) effects over 10-year simulations.  Total: 6 runs.
 
 **Outputs** (`figures/`):
-
-- `forcing_sensitivity_temperature.png` — aboveground biomass (last year, top)
-  and root mortality timeseries (bottom) across the three temperature regimes
-- `forcing_sensitivity_salinity.png` — same layout across the three salinity
-  regimes
-
-Each figure has two stacked subplots:
-- **Top:** aboveground biomass over the last year (seasonal cycle, day-of-year
-  x-axis)
-- **Bottom:** belowground root mortality rate over the full 10-year run
+`forcing_sensitivity_temperature.png`, `forcing_sensitivity_salinity.png`
 
 ```bash
 python sensitivity/forcing_sensitivity.py --binary ./build/marsh_cli
-python sensitivity/forcing_sensitivity.py --skip-runs   # plot only
+```
+
+---
+
+### `temperature_forcing_sensitivity.py`
+
+Compares three temperature-forcing approaches (sinusoidal, ERA5 daily,
+ERA5 monthly) on spring biomass onset.  All runs use the 2015–2024 ERA5
+period (10 years) with identical NI parameters.
+
+**Outputs** (`figures/`):
+`temperature_forcing_aboveground.png`, `temperature_forcing_timeseries.png`
+
+```bash
+python sensitivity/temperature_forcing_sensitivity.py --binary ./build/marsh_cli
 ```
 
 ---
 
 ### `longterm_sensitivity.py`
 
-Full-factorial **200-year** sensitivity runs exploring long-term carbon
-accumulation and surface elevation change across five parameters.
-
-All 48 runs start from the same initial 1-m sediment column:
-
-| Material | Profile |
-|----------|---------|
-| Refractory organic | 10 % of solid volume, uniform with depth |
-| Labile organic | 10 % at surface, exponential decay (e-fold 0.075 m, ~2 % at 30 cm) |
-| Live roots | 10 % at surface, same exponential profile |
-| Sand | remainder |
-
-| Parameter | Values |
-|-----------|--------|
-| SSC (kg m⁻³) | 0.005 / 0.020 / 0.050 |
-| Distance from creek | 5 m / 20 m |
-| Starting elevation | 0.20 m MSL / 0.50 m MSL |
-| SLR rate | 2 mm yr⁻¹ / 5 mm yr⁻¹ |
-| Temperature mean (°C) | 18 / 22 |
-
-Total: **48 runs**, North Inlet harmonic tides, monthly forcing steps.
-Porewater and methane models are disabled to keep run times manageable.
+Full-factorial **200-year** sensitivity runs across SSC (3 values), distance
+from creek (2), starting elevation (2), SLR rate (2), and temperature mean
+(2).  Total: 48 runs.
 
 **Outputs** (`figures/`):
-
-- `longterm_total_carbon.png` — total organic carbon (kg m⁻²) vs time
-- `longterm_labile_carbon.png` — labile organic carbon (kg m⁻²) vs time
-- `longterm_labile_rate.png` — annual rate of labile carbon change (kg m⁻² yr⁻¹)
-- `longterm_elevation.png` — surface elevation (m MSL) vs time
-
-Each figure is a 2 × 2 panel grid (rows = temperature, columns = distance).
-Within each panel: colour = SSC, linestyle = SLR rate, linewidth = starting elevation.
+`longterm_total_carbon.png`, `longterm_labile_carbon.png`,
+`longterm_labile_rate.png`, `longterm_elevation.png`
 
 ```bash
 python sensitivity/longterm_sensitivity.py --binary ./build/marsh_cli
-python sensitivity/longterm_sensitivity.py --skip-runs   # plot only, skip re-runs
 ```
 
 ---
 
-## Common options
+### `salinity_sensitivity.py`
 
-All scripts accept the same set of flags:
+10-year factorial simulations exploring how creek salinity (5 / 28 ppt),
+marsh elevation (0.2 / 0.5 m), distance from creek (2 / 20 m), and mean
+temperature (18 / 22 °C) interact to drive root-zone salinity and biomass.
+Total: 16 runs.
+
+**Outputs** (`figures/`):
+`salinity_sensitivity_rootzone.png`, `salinity_sensitivity_biomass.png`
+
+```bash
+python sensitivity/salinity_sensitivity.py --binary ./build/marsh_cli
+```
+
+---
+
+### `salinity_elevation_sweep.py`
+
+1-year sweep of root-zone salinity vs surface elevation at North Inlet,
+comparing near-creek (2 m) and far-from-creek (30 m) positions across the
+full intertidal range (0.05–0.85 m MSL).
+
+**Outputs** (`figures/`):
+`salinity_elevation_sweep.png`
+
+```bash
+python sensitivity/salinity_elevation_sweep.py --binary ./build/marsh_cli
+```
+
+---
+
+### `ni_biomass_rmse_scan.py`
+
+Grid scan of the three biomass-curve parameters **(K, σ_H, σ_R)** to
+minimise RMSE against the 14 Morris et al. (2013) North Inlet *S. alterniflora*
+biomass–elevation data points.  Identifies the calibrated NI defaults used
+across all other North Inlet runs.
+
+These calibrated values (K = 0.95, σ_H = 0.766, σ_R = 0.36) are the North
+Inlet defaults in `yaml_writer.py` and must not be changed without re-running
+this scan.
+
+**Outputs** (`figures/`):
+`ni_biomass_rmse_heatmap.png`, `ni_biomass_best_fit.png`
+
+```bash
+python sensitivity/ni_biomass_rmse_scan.py --binary ./build/marsh_cli
+```
+
+---
+
+### `test_biomass_curve_ni.py`
+
+Plots peak aboveground biomass vs surface elevation for *S. alterniflora* at
+North Inlet using 1-year simulations across the intertidal elevation range.
+Validates that the calibrated biomass curve reproduces the observed
+biomass–elevation relationship before longer runs are attempted.
+
+**Outputs** (`figures/`):
+`ni_biomass_curve.png`
+
+```bash
+python sensitivity/test_biomass_curve_ni.py --binary ./build/marsh_cli
+```
+
+---
+
+### `ni_parameter_test.py`
+
+Spot-checks the calibrated NI parameters (biomass, accretion, root:shoot
+ratio, porewater salinity) in a single 50-year reference run at Goat Island
+High Marsh conditions (elevation 0.75 m, SSC 28 mg/L, distance 20 m).
+
+**Outputs** (`figures/`):
+`ni_parameter_test_timeseries.png`, `ni_parameter_test_profiles.png`
+
+```bash
+python sensitivity/ni_parameter_test.py --binary ./build/marsh_cli
+```
+
+---
+
+### `ni_carbon_profile_sensitivity.py`
+
+Sensitivity scan to tune the model to reproduce OM depth profiles at North
+Inlet, South Carolina (Stevens 2024 CB_H core).
+
+**Scenario A — OL High Marsh (Goat Island)**
+Target: ~5 % OM near surface, ~2 % OM deep.
+Grid: 2 elevations × 6 refractory fractions × 5 mortality rates × 3 root
+e-folding depths = **180 runs**, 50 years each.
+Calibrated result (mixing compaction): elev = 0.75 m, refrac = 0.50,
+mort = 8×10⁻⁴/d, efolding = 0.05 m.
+
+**Scenario B — Morris tube**
+Target: ~20 % OM surface, ~8 % at 20 cm.  Fresh mineral substrate, SSC ≈ 0,
+5-year run.  Grid: 6 refrac × 5 mort = 30 runs.
+(Target unachievable in 5 years — result documents why.)
+
+Output directories: `runs/ni_carbon_ol_hm_v5/`, `runs/ni_carbon_morris_tube_v4/`
+
+**Outputs** (`figures/`):
+`ni_olhm_elevation_summary.png`, `ni_olhm_heatmap_e*.png`,
+`ni_olhm_diagnostic_overall_best.png`, `ni_olhm_profiles_best_elev.png`,
+`ni_morris_tube_heatmap_v3.png`, `ni_morris_tube_profiles_v3.png`,
+`ni_morris_tube_diagnostic_best_v3.png`
+
+```bash
+python sensitivity/ni_carbon_profile_sensitivity.py --binary ./build/marsh_cli
+python sensitivity/ni_carbon_profile_sensitivity.py --plot-only
+```
+
+---
+
+### `carbon_pool_test.py`
+
+Single 20-year diagnostic run to verify carbon-pool mass balance (refractory,
+labile, live roots) under North Inlet forcing with an elevated root:shoot ratio
+(~3–4).  Used to confirm the root allocation and decay models are self-consistent.
+
+**Outputs** (`figures/`):
+`carbon_pool_test.png` (column totals vs time),
+`carbon_pool_test_depth.png` (depth profiles at end)
+
+```bash
+python sensitivity/carbon_pool_test.py --binary ./build/marsh_cli
+```
+
+---
+
+### `brain_compaction_test.py`
+
+Compares the **Brain (2012) two-stage compaction model** against the new
+**depth-dependent mixing compaction model** across 108 prescribed LOI columns
+(100 layers × 1 cm, no vegetation/deposition/decay) and benchmarks both
+against CCN synthesis DBD data for USA and UK cores.
+
+Grid: 36 mean LOI values (0.00–0.70, step 0.02) × 3 profile types
+(uniform / top-heavy / bottom-heavy) = 108 runs per model, 216 total.
+
+**Key finding**: Brain model systematically over-compacts (DBD ~2–3× higher
+than CCN observations); mixing model sits within the CCN data cloud.
+
+**Outputs** (`figures/`):
+`brain_compaction_dbd_loi.png` — mixing model vs CCN (USA / UK panels)
+`brain_vs_mixing_compaction_dbd_loi.png` — three-panel comparison:
+Brain vs CCN | Mixing vs CCN | direct Brain vs Mixing overlay
+
+```bash
+python sensitivity/brain_compaction_test.py --binary ./build/marsh_cli
+python sensitivity/brain_compaction_test.py --plot-only   # uses cached runs
+python sensitivity/brain_compaction_test.py --force       # re-run everything
+```
+
+---
+
+### `plot_ni_porewater.py`
+
+Plots monthly depth profiles and time series of porewater chemistry (NH₄,
+SO₄, pH, H₂S, CH₄) from the North Inlet LTREB dataset (edi.136.11) for
+control plots.  Does not run the model.
+
+**Outputs** (`figures/`):
+`depth_profiles_<site>_<loc>_<year>.png`,
+`timeseries_<site>_<loc>.png`
+
+```bash
+python sensitivity/plot_ni_porewater.py
+```
+
+---
+
+### `porewater_chemistry_north_inlet.py`
+
+Investigates drivers of porewater chemistry at North Inlet LTREB sites by
+combining porewater data (edi.136.11), aboveground biomass (edi.135.12), and
+NOAA tidal harmonics.  Explores correlations between NH₄, SO₄ and biomass,
+elevation, and inundation.  Does not run the model.
+
+**Outputs** (`figures/`): correlation matrices, scatter plots per species.
+
+```bash
+python sensitivity/porewater_chemistry_north_inlet.py
+```
+
+---
+
+### `restoration_experiment.py`
+
+50-year colonisation runs starting from **bare sand** — simulating marsh
+restoration or initial platform establishment.  Explores how starting elevation
+and SSC control the trajectory of biomass establishment and carbon accumulation
+on bare intertidal substrate.
+
+**Outputs** (`figures/`):
+`restoration_elevation_timeseries.png`, `restoration_carbon_timeseries.png`
+
+```bash
+python sensitivity/restoration_experiment.py --binary ./build/marsh_cli
+```
+
+---
+
+## Common flags
 
 | Flag | Effect |
 |------|--------|
 | `--binary PATH` | Path to `marsh_cli` executable (default: `marsh_cli` on PATH) |
-| `--skip-runs` | Skip runs if output `.nc` files already exist; go straight to plotting |
-| `--plot-only` | Plot from existing outputs; do not run the model at all |
-| `--force` | Re-run all simulations even if outputs exist |
-| `--no-save` | Display figures interactively instead of saving to `figures/` |
+| `--plot-only` | Plot from existing outputs; skip all model runs |
+| `--force` | Re-run all simulations even if outputs already exist |
+| `--skip-runs` | Skip runs where output `.nc` exists; plot only new runs |
 
 ---
 
@@ -228,27 +326,50 @@ All scripts accept the same set of flags:
 ```
 sensitivity/
   runs/
-    timestep/          YAML configs and NetCDF outputs for timestep_sensitivity
-    inner_cycle/       YAML configs and NetCDF outputs for inner_cycle_sensitivity
-    gpp_params/        YAML configs and NetCDF outputs for gpp_parameter_sensitivity
-    forcing/           YAML configs and NetCDF outputs for forcing_sensitivity
-    longterm/          YAML configs and NetCDF outputs for longterm_sensitivity (48 runs)
-  figures/             All saved PNG figures
+    timestep/                   timestep_sensitivity runs
+    inner_cycle/                inner_cycle_sensitivity runs
+    gpp_params/                 gpp_parameter_sensitivity runs
+    forcing/                    forcing_sensitivity runs
+    longterm/                   longterm_sensitivity (48 runs)
+    ni_biomass_curve/           test_biomass_curve_ni runs
+    ni_biomass_curve_k120/      ni_biomass_rmse_scan runs
+    ni_carbon_ol_hm_v5/         ni_carbon_profile_sensitivity Scenario A (mixing compaction)
+    ni_carbon_morris_tube_v4/   ni_carbon_profile_sensitivity Scenario B (mixing compaction)
+    brain_compaction_test/
+      brain/                    Brain two-stage model runs
+      mixing/                   Mixing compaction model runs
+    carbon_pool_test/           carbon_pool_test run
+  figures/                      All saved PNG figures
 ```
 
-Intermediate YAML files are kept alongside the NetCDF outputs so any run can be
+Intermediate YAML files are kept alongside NetCDF outputs so any run can be
 reproduced exactly with `marsh_cli <yaml_path>`.
 
 ---
 
-## Relationship to the calibration scripts
+## Compaction model note
 
-The GPP parameter sensitivity script imports `PARAM_NAMES`, `PARAM_BOUNDS`, and
-`PARAM_DEFAULTS` directly from `calibration/calibrate_ni.py`.  If the
-calibration parameter set or bounds are updated, the sensitivity test values
-update automatically on the next run.
+All scripts now use `mixing_compaction` (depth-dependent mixing law) as the
+default compaction model.  This model is calibrated against 91,780 CCN
+synthesis core observations and produces DBD values consistent with observed
+data across the full LOI range (0–0.7).  The previous default
+(`two_stage_compaction`, Brain et al. 2012) over-compacted by a factor of
+2–3× relative to CCN observations and is retained only in
+`brain_compaction_test.py` for comparison.
 
-The `yaml_writer.py` defaults (shared by both calibration and sensitivity runs)
-use `edge_distance_deposition` and set `deposition_distance_from_edge_m` from
-the plot's `distance_from_creek_m`.  See the main `readme.md` for a description
-of the deposition and timestepping models.
+The polynomial coefficients (depth in metres, DBD in g cm⁻³) fitted to all
+CCN data:
+
+| Parameter | a₀ | a₁ | a₂ | R² |
+|-----------|-----|-----|-----|-----|
+| k₁ (organic) | 0.1059 | −0.0129 | 0.0276 | 0.85 |
+| k₂ (mineral) | 1.3997 | 0.1701 | −0.3136 | 0.95 |
+
+---
+
+## Relationship to calibration
+
+`ni_biomass_rmse_scan.py` produces the K, σ_H, σ_R values that are the NI
+defaults in `calibration/yaml_writer.py`.  If those defaults change, this
+scan must be re-run.  `ni_carbon_profile_sensitivity.py` imports those
+defaults and the NI tidal constituents from `calibration/site_config.py`.
