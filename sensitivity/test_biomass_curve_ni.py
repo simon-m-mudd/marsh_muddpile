@@ -4,27 +4,31 @@ test_biomass_curve_ni.py
 
 Peak aboveground biomass vs surface elevation for S. alterniflora at North Inlet.
 
-Each simulation runs for 1 year (12 monthly steps) across a range of target
-post-compaction surface elevations.  The model is initialised with a modest
-starting biomass (0.3 kg m⁻²) at the beginning of the year; the peak ABG
-recorded over all 12 steps is the 'peak aboveground biomass' at that elevation.
+Each simulation runs for 1 year (12 monthly steps) across a range of surface
+elevations.  The model is initialised with a modest starting biomass (0.3 kg m⁻²)
+at the beginning of the year; the peak ABG recorded over all 12 steps is the
+'peak aboveground biomass' at that elevation.
 
-Parameters use the best-fit North Inlet calibration:
-  LUE       = 3.5e-4 gC μmol⁻¹
-  Capacity  = 1.0 kg m⁻²  (aboveground and belowground)
+Parameters (current best-fit North Inlet calibration):
+  LUE       = 1.6e-6 gC μmol⁻¹
+  Capacity  = 0.95 kg m⁻² aboveground, 1.9 kg m⁻² belowground
   SSC       = 0.006 kg m⁻³  (low-turbidity NI conditions)
-  Tidal constituents  damped ×0.85 relative to NOAA 8661070
-  Hydroperiod Gaussian optimum = 0.35  (aligned with tent-function optimum)
+  Tidal constituents from NOAA 8662245 (Oyster Landing, directly at North Inlet)
+    — no damping applied; MSL = 0.108 m NAVD88 (fitted growing-season mean, 2021)
+  Compaction model: mixing_compaction (Morris et al. 2016 depth-dependent LOI mixing)
+    — initial column is close to mixing-model equilibrium; no pre-compaction offset
+  Refractory organic decay: k_0 = 0.0 (inert on marsh timescales)
 
 Reference overlays:
-  MSL = 0.0 m (model datum)
-  MHW = north_inlet_default_tides().mean_high_tide_m  (damped ×0.85)
+  MSL = 0.108 m NAVD88 (Apr–Sep 2021 growing-season mean, NOAA 8662245)
+  MHW = 0.625 m NAVD88 (NOAA 8662245 datum)
   Miller et al. (2019) parabola fit (coefficients from figure):
-      B = 14.8·E − 0.157·E² + 598  [g m⁻²]  E = cm above NAVD88
-      Peak at E = 47 cm NAVD88  ≈  0.32 m above MSL  (B_max ≈ 947 g m⁻²)
-      Converted assuming MSL = NAVD88 + 0.15 m (typical SC Lowcountry)
+      B = 14.8·E − 0.157·E² + 598  [g m⁻²]  E = cm NAVD88
+      Peak at E = 47 cm NAVD88  (B_max ≈ 947 g m⁻²)
   NI data points (Morris et al. 2013 Oceanography, 2008 field data)
   with error bars from morris2013_biomass_data.csv
+
+All elevations (model outputs, axis, reference data) are in m NAVD88.
 
 Usage
 -----
@@ -77,20 +81,23 @@ except ImportError as exc:
 
 LUE            = 1.6e-6   # gC per umol PAR — calibrated to Morris et al. (2013) NI data
 CAPACITY_KG_M2      = 0.95   # kg m⁻² aboveground — RMSE-optimal vs Morris 2013 data
-CAPACITY_KG_M2_HIGH = 1.20   # kg m⁻² aboveground — matches observed biomass peaks
+CAPACITY_KG_M2_HIGH = 1.20   # kg m⁻² aboveground — for comparison
+
+# Best-fit σ values from ni_biomass_rmse_scan (v2, corrected MSL=0.108):
+SIGMA_H_BEST = 0.25   # high-elevation (dry-side) half-Gaussian  — was 0.18
+SIGMA_R_BEST = 0.22   # low-elevation  (wet-side) half-Gaussian  — was 0.25
 NI_SSC_KG_M3  = 0.006     # kg m⁻³
 NI_SLR_M_YR   = 0.003     # m yr⁻¹
 NI_DISTANCE_M  = 20.0     # m from creek
 
-# Datum offset used for Miller (2019) parabola conversion
-# NAVD88 ≈ MSL − 0.15 m  for North Inlet, SC  (typical SC Lowcountry VDatum)
-NAVD88_BELOW_MSL_M = 0.15
+# MSL offset above NAVD88 for the 2021 growing season (Apr–Sep) at NOAA 8662245.
+# Used to convert Morris NAVD88 data to the same coordinate as the model MSL.
+# Updating this keeps the biomass-elevation x-axis in m NAVD88 throughout.
+NAVD88_BELOW_MSL_M = 0.108
 
-# Elevations (m MSL) of the three low-outlier data points (alternating low/high
+# Elevations (m NAVD88) of the three low-outlier data points (alternating low/high
 # scatter in Morris 2013 field plots at +5, +25, +55 cm NAVD88).
-_LOW_OUTLIER_ELEV_M = {0.05 - NAVD88_BELOW_MSL_M,
-                        0.25 - NAVD88_BELOW_MSL_M,
-                        0.55 - NAVD88_BELOW_MSL_M}
+_LOW_OUTLIER_ELEV_M = {0.05, 0.25, 0.55}
 
 # Initial biomass for 1-year runs
 INITIAL_BIOMASS_KG_M2 = 0.3   # kg m⁻²
@@ -99,21 +106,23 @@ INITIAL_BIOMASS_KG_M2 = 0.3   # kg m⁻²
 # Elevation sweep
 # ---------------------------------------------------------------------------
 
-# Target post-compaction surface elevations (m above MSL, initial MSL = 0.0)
-ELEV_MIN_M  = -0.50   # -35 cm NAVD88 (leftmost Morris 2013 NI point)
-ELEV_MAX_M  =  0.95   # 110 cm NAVD88 (rightmost Morris 2013 NI point)
+# Target surface elevations (m NAVD88).
+# Covers the full Morris 2013 NI data range (-35 to 110 cm NAVD88).
+ELEV_MIN_M  = -0.50   # m NAVD88 (below subtidal zone)
+ELEV_MAX_M  =  0.95   # m NAVD88 (supratidal fringe)
 ELEV_STEP_M =  0.05
 
-# The two-stage compaction model collapses a 1-m column (porosity 0.60) by
-# approximately 0.36 m on the first step.  Pre-compaction elevation = target + offset.
-_COMPACTION_OFFSET_M = 0.36
+# The mixing_compaction model produces near-zero net column-height change for
+# a φ=0.60 initial column (surface layers expand ~6%, deep mineral layers
+# contract ~2%, net ≈ ±0.01 m per 1 m column).  No pre-inflation is needed.
+_COMPACTION_OFFSET_M = 0.0
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
-OUTPUT_DIR      = _THIS_DIR / "runs" / "ni_biomass_curve"
-OUTPUT_DIR_HIGH = _THIS_DIR / "runs" / "ni_biomass_curve_k120"
+OUTPUT_DIR      = _THIS_DIR / "runs" / "ni_biomass_curve_v2"
+OUTPUT_DIR_HIGH = _THIS_DIR / "runs" / "ni_biomass_curve_v2_k120"
 FIGURE_DIR = _THIS_DIR / "figures"
 
 # ---------------------------------------------------------------------------
@@ -217,9 +226,11 @@ def _write_yaml(
     parameters["deposition_distance_from_edge_m"] = NI_DISTANCE_M
     parameters.setdefault("deposition_basin_length_m", 50.0)
     parameters.setdefault("deposition_length_scale_beta", 3.0)
-    parameters["vegetation_lue_gC_per_umol"]             = LUE
-    parameters["vegetation_aboveground_capacity_kg_m2"]  = capacity_kg_m2
-    parameters["vegetation_belowground_capacity_kg_m2"]  = capacity_kg_m2 * 2.0
+    parameters["vegetation_lue_gC_per_umol"]                    = LUE
+    parameters["vegetation_aboveground_capacity_kg_m2"]         = capacity_kg_m2
+    parameters["vegetation_belowground_capacity_kg_m2"]         = capacity_kg_m2 * 2.0
+    parameters["vegetation_hydroperiod_sigma_fraction"]         = SIGMA_H_BEST
+    parameters["vegetation_inundation_sigma_fraction"]          = SIGMA_R_BEST
 
     initial_layers = _build_initial_layers(pre_compaction_elev_m)
 
@@ -345,18 +356,16 @@ def _read_run(nc_path: Path) -> Tuple[float, float, float]:
 # Miller (2019) reference parabola and digitised data
 # ---------------------------------------------------------------------------
 
-def _miller_parabola_kg_m2(z_msl_m: np.ndarray) -> np.ndarray:
+def _miller_parabola_kg_m2(z_navd88_m: np.ndarray) -> np.ndarray:
     """
     B = 14.8·E − 0.157·E² + 598  [g m⁻²]  (coefficients from Miller 2019 figure)
-    E  = cm above NAVD88
-    MSL ≈ NAVD88 + NAVD88_BELOW_MSL_M  →  E = (z_msl + NAVD88_BELOW_MSL_M) × 100
+    E  = cm NAVD88  →  E = z_navd88_m × 100
 
-    Peak at E = 14.8 / (2 × 0.157) ≈ 47.1 cm NAVD88  ≈  0.321 m above MSL
-    B_max ≈ 947 g m⁻²
+    Peak at E ≈ 47.1 cm NAVD88  (B_max ≈ 947 g m⁻²)
 
     Returns B in kg m⁻² (zero-clipped).
     """
-    E_cm = (z_msl_m + NAVD88_BELOW_MSL_M) * 100.0
+    E_cm = z_navd88_m * 100.0
     B_g  = 14.8 * E_cm - 0.157 * E_cm ** 2 + 598.0
     return np.maximum(0.0, B_g) / 1000.0
 
@@ -364,8 +373,8 @@ def _miller_parabola_kg_m2(z_msl_m: np.ndarray) -> np.ndarray:
 def _load_morris_data(site: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load digitised Morris et al. (2013) data for one site from the CSV.
 
-    Returns (elevation_m_msl, biomass_kg_m2, se_kg_m2) arrays,
-    elevation converted from cm NAVD88 using NAVD88_BELOW_MSL_M offset.
+    Returns (elevation_m_navd88, biomass_kg_m2, se_kg_m2) arrays.
+    Elevation is in m NAVD88 (same coordinate as the model surface elevation).
     """
     csv_path = _THIS_DIR / "morris2013_biomass_data.csv"
     elev_cm, bio_g, se_g = [], [], []
@@ -376,8 +385,8 @@ def _load_morris_data(site: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
                 elev_cm.append(float(row["elevation_cm_navd88"]))
                 bio_g.append(float(row["biomass_g_m2"]))
                 se_g.append(float(row["biomass_se_g_m2"]))
-    elev_m_msl = (np.array(elev_cm) / 100.0) - NAVD88_BELOW_MSL_M
-    return elev_m_msl, np.array(bio_g) / 1000.0, np.array(se_g) / 1000.0
+    elev_m_navd88 = np.array(elev_cm) / 100.0
+    return elev_m_navd88, np.array(bio_g) / 1000.0, np.array(se_g) / 1000.0
 
 
 # ---------------------------------------------------------------------------
@@ -453,15 +462,15 @@ def _plot(
 
     fig, ax = plt.subplots(figsize=(11, 6.0))
 
-    # ---- tidal datum shading ----
-    msl_m = 0.0
-    mhw_m = tides.mean_high_tide_m
+    # ---- tidal datum shading (m NAVD88) ----
+    msl_m = tides.mean_sea_level_m    # 0.108 m NAVD88, Apr-Sep 2021 growing-season MSL
+    mhw_m = tides.mean_high_tide_m    # 0.625 m NAVD88
     ax.axvspan(msl_m, mhw_m, color="lightblue", alpha=0.18, zorder=0,
-               label=f"Intertidal zone (MSL – MHW {mhw_m:.2f} m)")
+               label=f"Intertidal zone (MSL – MHW)")
     ax.axvline(msl_m, color="#4393c3", linewidth=1.4, linestyle="--", zorder=2,
-               label=f"MSL = {msl_m:.2f} m")
+               label=f"MSL = {msl_m:.3f} m NAVD88")
     ax.axvline(mhw_m, color="#2166ac", linewidth=1.4, linestyle="--", zorder=2,
-               label=f"MHW = {mhw_m:.3f} m")
+               label=f"MHW = {mhw_m:.3f} m NAVD88")
 
     # ---- Miller (2019) parabola ----
     z_ref = np.linspace(ELEV_MIN_M - 0.05, ELEV_MAX_M + 0.05, 500)
@@ -518,26 +527,28 @@ def _plot(
             ),
         )
 
-    ax.set_xlabel("Surface elevation (m above MSL)", fontsize=11)
+    ax.set_xlabel("Surface elevation (m NAVD88)", fontsize=11)
     ax.set_ylabel("Peak aboveground biomass (kg m⁻²)", fontsize=11)
     ax.set_xlim(ELEV_MIN_M - 0.05, ELEV_MAX_M + 0.05)
     ax.set_ylim(bottom=0.0, top=1.65)
 
     ax2 = ax.twiny()
     ax2.set_xlim(
-        (ELEV_MIN_M - 0.05 + NAVD88_BELOW_MSL_M) * 100,
-        (ELEV_MAX_M + 0.05 + NAVD88_BELOW_MSL_M) * 100,
+        (ELEV_MIN_M - 0.05) * 100,
+        (ELEV_MAX_M + 0.05) * 100,
     )
-    ax2.set_xlabel("Elevation (cm above NAVD88)", fontsize=10)
+    ax2.set_xlabel("Elevation (cm NAVD88)", fontsize=10)
 
     ax.grid(True, linewidth=0.3, alpha=0.5)
     ax.set_title(
         "Peak aboveground biomass vs elevation — North Inlet S. alterniflora\n"
-        f"σ_H={_DEFAULT_PARAMETERS['vegetation_hydroperiod_sigma_fraction']:.2f}  "
-        f"σ_R={_DEFAULT_PARAMETERS['vegetation_inundation_sigma_fraction']:.2f}  "
+        f"σ_H={SIGMA_H_BEST:.2f}  "
+        f"σ_R={SIGMA_R_BEST:.2f}  "
         f"LUE={LUE:.1e} gC μmol⁻¹   "
-        f"SSC={NI_SSC_KG_M3*1000:.0f} mg L⁻¹\n"
-        "RMSE values: all 14 pts / excluding 3 low-outlier plots",
+        f"SSC={NI_SSC_KG_M3*1000:.0f} mg L⁻¹  "
+        f"MSL={NAVD88_BELOW_MSL_M:.3f} m NAVD88\n"
+        "mixing_compaction | refractory k₀=0 | NOAA 8662245 constituents | "
+        "RMSE: all 14 pts / excl. 3 low-outlier plots",
         fontsize=9,
     )
     ax.legend(fontsize=8, loc="upper left", framealpha=0.9)

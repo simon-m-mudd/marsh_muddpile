@@ -56,16 +56,16 @@ LUE            = 1.6e-6
 NI_SSC_KG_M3  = 0.006
 NI_SLR_M_YR   = 0.003
 NI_DISTANCE_M  = 20.0
-NAVD88_BELOW_MSL_M = 0.15
+NAVD88_BELOW_MSL_M = 0.108   # growing-season MSL offset above NAVD88 (Apr-Sep 2021)
 INITIAL_BIOMASS_KG_M2 = 0.3
 
-OUTPUT_DIR = _THIS_DIR / "runs" / "ni_rmse_scan"
+OUTPUT_DIR = _THIS_DIR / "runs" / "ni_rmse_scan_v2"
 
 _N_LAYERS        = 20
 _LAYER_THICKNESS = 0.05
 _POROSITY        = 0.60
 _ORGANIC_EFOLDING = 0.075
-_COMPACTION_OFFSET_M = 0.36
+_COMPACTION_OFFSET_M = 0.0   # mixing_compaction: near-zero net column height change
 
 _RHO_SAND   = 2650.0
 _RHO_REFRAC = 1400.0
@@ -96,16 +96,16 @@ def _load_morris_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
                 elev_cm.append(float(row["elevation_cm_navd88"]))
                 bio_g.append(float(row["biomass_g_m2"]))
                 se_g.append(float(row["biomass_se_g_m2"]))
-    elev_m_msl = (np.array(elev_cm) / 100.0) - NAVD88_BELOW_MSL_M
-    return elev_m_msl, np.array(bio_g) / 1000.0, np.array(se_g) / 1000.0
+    elev_m_navd88 = np.array(elev_cm) / 100.0
+    return elev_m_navd88, np.array(bio_g) / 1000.0, np.array(se_g) / 1000.0
 
 
 # ---------------------------------------------------------------------------
 # Parabola RMSE
 # ---------------------------------------------------------------------------
 
-def _miller_parabola_kg_m2(z_msl_m: np.ndarray) -> np.ndarray:
-    E_cm = (z_msl_m + NAVD88_BELOW_MSL_M) * 100.0
+def _miller_parabola_kg_m2(z_navd88_m: np.ndarray) -> np.ndarray:
+    E_cm = z_navd88_m * 100.0
     B_g  = 14.8 * E_cm - 0.157 * E_cm ** 2 + 598.0
     return np.maximum(0.0, B_g) / 1000.0
 

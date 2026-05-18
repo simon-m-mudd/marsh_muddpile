@@ -85,10 +85,10 @@ Eigen::ArrayXXd exponential_root_allocation_model::compute_root_mass_change(
         find_material_index(catalog, {"refractory_organic", "refractory_carbon", "refractory_om"});
 
     const double labile_fraction =
-        get_parameter_or_default(parameters, "root_allocation_to_labile_fraction", 0.5);
+        get_parameter_or_default(parameters, "root_allocation_to_labile_fraction", 0.9);
 
     const double refractory_fraction =
-        get_parameter_or_default(parameters, "root_allocation_to_refractory_fraction", 0.5);
+        get_parameter_or_default(parameters, "root_allocation_to_refractory_fraction", 0.1);
 
     const double total_partition_fraction =
         labile_fraction + refractory_fraction;

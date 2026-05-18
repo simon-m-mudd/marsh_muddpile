@@ -133,6 +133,15 @@ class PlotConfig:
     # if not explicitly overridden; set in yaml_writer.write_config).
     initial_salinity_ppt: float = 20.0
 
+    # Marker horizon — inserts a thin layer of inert 'marker' material
+    # (density 2600 kg/m³, no decay, no deposition) at the sediment surface
+    # (surface_elevation_m).  Useful for simulating feldspar or other
+    # artificial marker experiments; accretion above the marker is readable
+    # from the NetCDF output as the depth of marker material below the
+    # instantaneous surface.
+    add_marker_horizon: bool = False
+    marker_horizon_thickness_m: float = 0.002   # 2 mm default
+
     # Output
     output_dir: str = "calibration_runs"
 
@@ -143,28 +152,50 @@ class PlotConfig:
 
 def north_inlet_default_tides() -> TideRecord:
     """North Inlet, SC
-    Harmonic constituents from NOAA 8661070 (Springmaid Pier / North Inlet, SC),
-    then damped by factor 0.85 to account for the amplitude attenuation observed
-    between the NOAA open-water gauge and the local creek gauge inside the marsh
-    (site-specific analysis of in-situ vs NOAA water level records).
-    Phases are unchanged — damping is amplitude-only.
+    Harmonic constituents from NOAA 8662245 (North Inlet-Winyah Bay NERR, SC),
+    the in-marsh gauge located directly at North Inlet LTER.  No damping applied —
+    these are the directly observed constituents at the site.
+
+    Datums (NAVD88 basis):
+      NAVD88 = 2.040 m above station datum
+      MSL    = 2.032 m above station datum → MSL - NAVD88 ≈ -0.008 m (long-term datum)
+      MHW    = 2.665 m above station datum → MHW - NAVD88  =  0.625 m
+
+    mean_sea_level_m is set to +0.108 m (fitted growing-season MSL, Apr–Sep 2021),
+    which reflects the +0.116 m post-datum SLR offset above the 1983–2001 NAVD88
+    reference.  Using 0.0 (the long-term datum) underestimates inundation fraction
+    at high-marsh elevations by ~3×.
+
+    Constituents are least-squares fitted to the NOAA 8662245 6-minute water-level
+    record for Apr–Sep 2021 (the last complete growing season before the gauge went
+    inactive).  Fitted values are used in preference to the NOAA-published long-term
+    averages because the fitted phases correctly capture the 2021 phase relationships
+    and the fitted K1/O1 amplitudes are ~5–9% larger, keeping inundation fraction
+    above 1% at elevations near 1 m NAVD88 consistent with the direct-count record.
+
+    NOAA-published long-term values (for reference):
+      M2=0.610 m / 32.1°, S2=0.095 m / 67.8°, N2=0.133 m / 21.9°,
+      K1=0.102 m / 214.6°, O1=0.080 m / 217.0°
+
+    Previously used NOAA 8661070 (Springmaid Pier, ~30 km NNE) damped by 0.85:
+      M2=0.621 m / 357.9°, S2=0.105 m / 20.3°, N2=0.145 m / 340.6°,
+      K1=0.087 m / 187.6°, O1=0.065 m / 191.4°
     """
-    _damp = 0.85
     t = TideRecord()
-    t.mean_sea_level_m            = 0.0
-    t.mean_high_tide_m            = round(0.762 * _damp, 4)   # 0.648 m
-    t.tidal_amplitude_m           = round(0.766 * _damp, 4)   # 0.651 m
+    t.mean_sea_level_m            = 0.108     # fitted growing-season MSL, Apr–Sep 2021 (NOAA 8662245)
+    t.mean_high_tide_m            = 0.625     # MHW - NAVD88 (m)
+    t.tidal_amplitude_m           = 0.633     # MHW - MSL (m)
     t.tidal_period_hours          = 12.42
-    t.M2_amplitude_m              = round(0.730 * _damp, 4)   # 0.621 m
-    t.M2_phase_deg                = 357.9
-    t.S2_amplitude_m              = round(0.123 * _damp, 4)   # 0.105 m
-    t.S2_phase_deg                = 20.3
-    t.N2_amplitude_m              = round(0.171 * _damp, 4)   # 0.145 m
-    t.N2_phase_deg                = 340.6
-    t.K1_amplitude_m              = round(0.102 * _damp, 4)   # 0.087 m
-    t.K1_phase_deg                = 187.6
-    t.O1_amplitude_m              = round(0.076 * _damp, 4)   # 0.065 m
-    t.O1_phase_deg                = 191.4
+    t.M2_amplitude_m              = 0.6091    # least-squares fit to 8662245 Apr–Sep 2021 record
+    t.M2_phase_deg                = 67.9
+    t.S2_amplitude_m              = 0.0824
+    t.S2_phase_deg                = 66.5
+    t.N2_amplitude_m              = 0.1340
+    t.N2_phase_deg                = 335.5
+    t.K1_amplitude_m              = 0.1062
+    t.K1_phase_deg                = 204.8
+    t.O1_amplitude_m              = 0.0867
+    t.O1_phase_deg                = 257.5
     t.creek_salinity_ppt          = 28.0
     t.suspended_sediment_concentration_kg_m3 = 0.020  # PLACEHOLDER
     t.fine_sediment_concentration_kg_m3      = 0.005  # PLACEHOLDER

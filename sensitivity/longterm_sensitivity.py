@@ -393,6 +393,10 @@ def _read_run(nc_path: Path) -> dict:
             "".join(ds.variables["material_name"][j].compressed().astype("U"))
             for j in range(ds.dimensions["material"].size)
         ]
+        bg_growth = np.array(ds.variables["belowground_growth_kg_m2_d"][:], dtype=np.float64)
+        bg_mortality = np.array(ds.variables["belowground_mortality_kg_m2_d"][:], dtype=np.float64)
+        ag_growth = np.array(ds.variables["aboveground_growth_kg_m2_d"][:], dtype=np.float64)
+        ag_mortality = np.array(ds.variables["aboveground_mortality_kg_m2_d"][:], dtype=np.float64)
 
         # Final column snapshot for depth profile
         snap = None
@@ -430,6 +434,10 @@ def _read_run(nc_path: Path) -> dict:
         "labile_carbon_kg_m2": labile_c,
         "t_rate_yr": t_rate_yr,
         "labile_rate_kg_m2_yr": labile_rate,
+        "bg_growth_kg_m2_d": bg_growth,
+        "bg_mortality_kg_m2_d": bg_mortality,
+        "ag_growth_kg_m2_d": ag_growth,
+        "ag_mortality_kg_m2_d": ag_mortality,
         "oc_profile": None,
     }
 
@@ -694,6 +702,116 @@ def _plot_oc_profiles(
     plt.close(fig)
 
 
+_DETAIL_YEARS = 5   # window length for the seasonal detail figure
+
+
+def _plot_labile_rate_detail(
+    data_map: Dict[RunParams, dict],
+    save: bool,
+) -> None:
+    """Monthly labile-C rate with belowground growth and mortality on a second axis.
+
+    4 × 2 panel layout (rows = temperature × starting elevation, cols = distance).
+    Left axis: labile-C rate of change (kg m⁻² yr⁻¹), colour = SSC, style = SLR.
+    Right axis: belowground growth (solid) and mortality (dashed) in kg m⁻² d⁻¹,
+    drawn in muted colours matching the SSC encoding.
+    Time window: the last _DETAIL_YEARS years of each run.
+    """
+    nrow = len(_ROW_COMBOS)
+    ncol = len(DISTANCE_VALUES)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(14, 16), sharex=True)
+
+    t_start = N_YEARS - _DETAIL_YEARS
+
+    for ri, (dt, elev) in enumerate(_ROW_COMBOS):
+        for ci, dist in enumerate(DISTANCE_VALUES):
+            ax_rate = axes[ri, ci]
+            ax_bio = ax_rate.twinx()
+
+            ax_rate.axhline(0, color="0.7", linewidth=0.6, zorder=0)
+
+            for p, data in data_map.items():
+                if p.temp_offset != dt or p.elevation != elev or p.distance != dist:
+                    continue
+
+                col = _SSC_COLOURS[p.ssc]
+                ls = _SLR_STYLES[p.slr]
+                muted = col + "88"   # semi-transparent for the biomass axis
+
+                # labile rate — plotted at step midpoints
+                t_rate = np.asarray(data["t_rate_yr"])
+                rate = np.asarray(data["labile_rate_kg_m2_yr"])
+                mask_r = t_rate >= t_start
+                ax_rate.plot(
+                    t_rate[mask_r], rate[mask_r],
+                    color=col, linestyle=ls, linewidth=_LINE_WIDTH, alpha=0.9,
+                    zorder=3,
+                )
+
+                # belowground fluxes — plotted at step end-times
+                t_yr = np.asarray(data["t_yr"])
+                mask_b = t_yr >= t_start
+                ax_bio.plot(
+                    t_yr[mask_b],
+                    np.asarray(data["bg_growth_kg_m2_d"])[mask_b],
+                    color=muted, linestyle=ls, linewidth=0.9,
+                    zorder=2,
+                )
+                ax_bio.plot(
+                    t_yr[mask_b],
+                    np.asarray(data["bg_mortality_kg_m2_d"])[mask_b],
+                    color=muted, linestyle=":", linewidth=0.9,
+                    zorder=2,
+                )
+
+            ax_rate.set_title(
+                f"{_TEMP_OFFSET_LABELS[dt]},  z₀ = {elev:.2f} m,  d = {dist:.0f} m",
+                fontsize=8,
+            )
+            ax_rate.grid(True, linewidth=0.3, alpha=0.4)
+            ax_rate.tick_params(labelsize=7)
+            ax_bio.tick_params(labelsize=7)
+
+            if ci == 0:
+                ax_rate.set_ylabel("Labile-C rate (kg m⁻² yr⁻¹)", fontsize=8)
+            if ci == ncol - 1:
+                ax_bio.set_ylabel("BG flux (kg m⁻² d⁻¹)", fontsize=8)
+            else:
+                ax_bio.set_yticklabels([])
+            if ri == nrow - 1:
+                ax_rate.set_xlabel("Model time (years)", fontsize=8)
+
+    # Main legend: SSC colour + SLR linestyle (labile rate lines)
+    handles = _legend_handles()
+    # Biomass-axis legend entries (generic; colour varies by run)
+    handles.append(mlines.Line2D(
+        [], [], color="0.45", linestyle="-", linewidth=0.9,
+        label="BG growth",
+    ))
+    handles.append(mlines.Line2D(
+        [], [], color="0.45", linestyle=":", linewidth=0.9,
+        label="BG mortality",
+    ))
+
+    fig.legend(handles=handles, loc="lower center", ncol=6, fontsize=8,
+               bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle(
+        f"Monthly labile-C rate and belowground fluxes — last {_DETAIL_YEARS} years\n"
+        "North Inlet tides",
+        fontsize=11,
+    )
+    plt.tight_layout(rect=[0, 0.05, 1, 0.97])
+
+    outpath = FIGURE_DIR / "longterm_labile_rate_detail.png" if save else None
+    if outpath:
+        outpath.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(outpath, dpi=150, bbox_inches="tight")
+        print(f"  Saved: {outpath}")
+    else:
+        plt.show()
+    plt.close(fig)
+
+
 def _plot_all(results_raw: Dict[RunParams, Path], save: bool) -> None:
     print("Reading outputs ...")
     data_map: Dict[RunParams, dict] = {}
@@ -747,6 +865,8 @@ def _plot_all(results_raw: Dict[RunParams, Path], save: bool) -> None:
     _plot_elevation_with_mhw(data_map, mhw_offset, save)
 
     _plot_oc_profiles(data_map, save)
+
+    _plot_labile_rate_detail(data_map, save)
 
 
 # ---------------------------------------------------------------------------

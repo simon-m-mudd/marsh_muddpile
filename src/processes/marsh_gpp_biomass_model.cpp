@@ -89,6 +89,9 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
     const double inundation_range_stressor =
         compute_inundation_range_stressor(hydro, parameters);
 
+    const double low_inundation_gpp_stressor =
+        compute_low_inundation_gpp_stressor(hydro, parameters);
+
     const double salinity_stress =
         compute_salinity_stress(eco_state, parameters);
 
@@ -148,7 +151,8 @@ vegetation_diagnostics marsh_gpp_biomass_model::update_vegetation(
         temperature_modifier *
         hydroperiod_stress *
         salinity_stress *
-        inundation_range_stressor;
+        inundation_range_stressor *
+        low_inundation_gpp_stressor;
 
     diagnostics.gpp_gC_m2_d =
         std::max(0.0, diagnostics.gpp_gC_m2_d);
@@ -452,6 +456,42 @@ double marsh_gpp_biomass_model::compute_inundation_range_stressor(
     return std::exp(-0.5 * normalized * normalized);
 }
 
+// Linear GPP ramp for very low inundation.
+//
+// Returns 0 at IF=0, rising linearly to 1 at IF=threshold.  Above threshold
+// the stressor is always 1 (no penalty in the normal tidal frame).
+//
+// This is physically distinct from the Gaussian hydroperiod_stress: that
+// function captures the gradual productivity decline as tidal nutrient delivery
+// diminishes across the upper intertidal; this one represents the hard limit
+// imposed by desiccation — plants cannot sustain photosynthesis when tidal
+// wetting is so infrequent that the root zone dries between tides.
+//
+// The default threshold (0.05) matches vegetation_low_inundation_mortality_
+// threshold so that GPP and mortality respond to the same reference inundation
+// level at the upper margin of the intertidal zone.
+double marsh_gpp_biomass_model::compute_low_inundation_gpp_stressor(
+    const hydrology_diagnostics& hydro,
+    const parameter_set& parameters) const
+{
+    const double threshold =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_low_inundation_gpp_threshold",
+                0.05),
+            0.0,
+            1.0);
+
+    if (threshold <= 0.0)
+        return 1.0;
+
+    if (hydro.inundation_fraction >= threshold)
+        return 1.0;
+
+    return hydro.inundation_fraction / threshold;
+}
+
 // Exponential GPP reduction for root-zone salinity above a threshold.
 // Represents osmotic and ionic stress limiting carbon assimilation.
 double marsh_gpp_biomass_model::compute_salinity_stress(
@@ -631,17 +671,45 @@ double marsh_gpp_biomass_model::compute_aboveground_mortality_rate_per_day(
             get_parameter_or_default(
                 parameters,
                 "vegetation_low_inundation_mortality_slope_per_day",
-                0.10));
+                0.005));
 
     const double low_inundation_deficit =
         std::max(0.0, low_inundation_threshold - hydro.inundation_fraction);
+
+    // Desiccation: linear ramp from 0 at IF = desiccation_threshold to
+    // desiccation_rate at IF = 0.  Drives complete die-off above MHHW where
+    // Spartina is replaced by Juncus / high-marsh species on real Atlantic marshes.
+    const double desiccation_threshold =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_desiccation_threshold",
+                0.01),
+            0.0,
+            1.0);
+
+    const double desiccation_rate =
+        std::max(
+            0.0,
+            get_parameter_or_default(
+                parameters,
+                "vegetation_desiccation_mortality_rate_per_day",
+                0.10));
+
+    const double desiccation_mortality =
+        (desiccation_threshold > 0.0)
+        ? desiccation_rate *
+          std::max(0.0, desiccation_threshold - hydro.inundation_fraction) /
+          desiccation_threshold
+        : 0.0;
 
     return
         baseline_rate +
         cold_mortality_slope * cold_excess_c +
         hydro_slope * hydro_excess +
         salinity_slope * salinity_excess +
-        low_inundation_slope * low_inundation_deficit;
+        low_inundation_slope * low_inundation_deficit +
+        desiccation_mortality;
 }
 
 // Belowground mortality rate (d^-1): a baseline root-turnover rate plus linear
@@ -712,15 +780,40 @@ double marsh_gpp_biomass_model::compute_belowground_mortality_rate_per_day(
             get_parameter_or_default(
                 parameters,
                 "vegetation_low_inundation_mortality_slope_per_day",
-                0.10));
+                0.005));
 
     const double low_inundation_deficit =
         std::max(0.0, low_inundation_threshold - hydro.inundation_fraction);
+
+    const double desiccation_threshold =
+        clamp(
+            get_parameter_or_default(
+                parameters,
+                "vegetation_desiccation_threshold",
+                0.01),
+            0.0,
+            1.0);
+
+    const double desiccation_rate =
+        std::max(
+            0.0,
+            get_parameter_or_default(
+                parameters,
+                "vegetation_desiccation_mortality_rate_per_day",
+                0.10));
+
+    const double desiccation_mortality =
+        (desiccation_threshold > 0.0)
+        ? desiccation_rate *
+          std::max(0.0, desiccation_threshold - hydro.inundation_fraction) /
+          desiccation_threshold
+        : 0.0;
 
     return
         baseline_rate +
         hydro_slope * hydro_excess +
         salinity_slope * salinity_excess +
-        low_inundation_slope * low_inundation_deficit;
+        low_inundation_slope * low_inundation_deficit +
+        desiccation_mortality;
 }
 }

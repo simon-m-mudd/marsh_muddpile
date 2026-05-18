@@ -129,13 +129,20 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "vegetation_inundation_sigma_fraction": 0.25,    # half-Gaussian: controls left-limb (low-elevation) decline
     # low-inundation mortality — extra shoot+root loss when platform rises above tidal frame
     "vegetation_low_inundation_mortality_threshold": 0.05,
-    "vegetation_low_inundation_mortality_slope_per_day": 0.10,
+    "vegetation_low_inundation_mortality_slope_per_day": 0.005,
+    # desiccation mortality — lethal linear ramp from IF=threshold to IF=0
+    "vegetation_desiccation_threshold": 0.01,
+    "vegetation_desiccation_mortality_rate_per_day": 0.10,
+    # low-inundation GPP stressor — linear ramp from 0 (IF=0) to 1 (IF=threshold)
+    # suppresses production at the upper intertidal margin; threshold matches
+    # low_inundation_mortality_threshold so both responses share the same reference
+    "vegetation_low_inundation_gpp_threshold": 0.05,
 
     # root allocation
-    "root_efolding_depth_m": 0.10,
+    "root_efolding_depth_m": 0.08,
     "root_profile_normalize_to_column": 1.0,
-    "root_allocation_to_labile_fraction": 0.90,
-    "root_allocation_to_refractory_fraction": 0.10,
+    "root_allocation_to_labile_fraction": 0.34,
+    "root_allocation_to_refractory_fraction": 0.66,
 
     # TKE deposition
     "deposition_reference_biomass_g_m2": 500.0,
@@ -288,7 +295,107 @@ _DEFAULT_MATERIALS = [
         "density": 1100.0,
         "allow_root_input": True,
     },
+    {
+        "name": "marker",
+        "category": "mineral",
+        "density": 2600.0,
+        "allow_surface_deposition": False,
+    },
 ]
+
+
+def _insert_marker_layer(
+    layers: List[dict],
+    elevation_m: float,
+    thickness_m: float,
+) -> List[dict]:
+    """Insert a thin marker layer into an existing column layer list.
+
+    The marker top is placed at `elevation_m`.  If that elevation falls
+    inside an existing layer, that layer is split into an upper and lower
+    sub-layer with masses scaled proportionally to their new thicknesses,
+    and the marker is inserted between them.  If the elevation aligns with
+    a layer boundary no splitting is needed.
+
+    The marker layer contains only 'marker' material (density 2600 kg/m³,
+    inert mineral).  Its mass equals rho * (1 - porosity) * thickness.
+    """
+    _RHO_MARKER = 2600.0
+    result: List[dict] = []
+    inserted = False
+
+    for layer in layers:
+        if inserted:
+            result.append(layer)
+            continue
+
+        top    = layer["top_elevation_m"]
+        h      = layer["thickness_m"]
+        phi    = layer["porosity"]
+        bottom = round(top - h, 6)
+        marker_bottom = round(elevation_m - thickness_m, 6)
+
+        # Marker is above this layer — skip (surface-first ordering).
+        if elevation_m > top + 1e-9:
+            result.append(layer)
+            continue
+
+        # Marker top is at or below this layer's bottom — defer to the next
+        # layer (handles the exact-boundary case without creating overlaps).
+        if elevation_m <= bottom + 1e-9:
+            result.append(layer)
+            continue
+
+        # Marker top is strictly inside this layer: split around it.
+        upper_thick = round(top - elevation_m, 6)
+        lower_thick = round(marker_bottom - bottom, 6)
+
+        if upper_thick > 1e-6:
+            frac = upper_thick / h
+            result.append({
+                "top_elevation_m": round(top, 4),
+                "thickness_m":     round(upper_thick, 4),
+                "porosity":        phi,
+                "age_days":        layer["age_days"],
+                "mass_kg_m2":      {k: round(v * frac, 6)
+                                    for k, v in layer["mass_kg_m2"].items()},
+            })
+
+        marker_mass = round(_RHO_MARKER * (1.0 - phi) * thickness_m, 4)
+        result.append({
+            "top_elevation_m": round(elevation_m, 4),
+            "thickness_m":     round(thickness_m, 4),
+            "porosity":        phi,
+            "age_days":        0.0,
+            "mass_kg_m2":      {"marker": marker_mass},
+        })
+
+        if lower_thick > 1e-6:
+            frac = lower_thick / h
+            result.append({
+                "top_elevation_m": round(marker_bottom, 4),
+                "thickness_m":     round(lower_thick, 4),
+                "porosity":        phi,
+                "age_days":        layer["age_days"],
+                "mass_kg_m2":      {k: round(v * frac, 6)
+                                    for k, v in layer["mass_kg_m2"].items()},
+            })
+
+        inserted = True
+
+    if not inserted:
+        # Elevation is below the whole column — append at the bottom.
+        phi = layers[-1]["porosity"] if layers else 0.60
+        marker_mass = round(_RHO_MARKER * (1.0 - phi) * thickness_m, 4)
+        result.append({
+            "top_elevation_m": round(elevation_m, 4),
+            "thickness_m":     round(thickness_m, 4),
+            "porosity":        phi,
+            "age_days":        0.0,
+            "mass_kg_m2":      {"marker": marker_mass},
+        })
+
+    return result
 
 
 def build_initial_column_layers(config: PlotConfig) -> List[dict]:
@@ -312,7 +419,7 @@ def build_initial_column_layers(config: PlotConfig) -> List[dict]:
     rho_labile  = 1200.0
     rho_roots   = 1100.0
 
-    root_efolding_m = 0.10
+    root_efolding_m = 0.08
     total_roots = (config.mean_aboveground_biomass_kg_m2
                    * config.initial_root_to_shoot_ratio)
 
@@ -346,6 +453,13 @@ def build_initial_column_layers(config: PlotConfig) -> List[dict]:
                 "roots":              round(root_mass, 6),
             },
         })
+
+    if config.add_marker_horizon:
+        layers = _insert_marker_layer(
+            layers,
+            elevation_m=config.surface_elevation_m,
+            thickness_m=config.marker_horizon_thickness_m,
+        )
 
     return layers
 

@@ -94,6 +94,14 @@ private:
         const hydrology_diagnostics& hydro,
         const parameter_set& parameters) const;
 
+    // Linear GPP ramp from 0 (at IF=0) to 1 (at IF=threshold).
+    // Suppresses production at very low inundation where tidal water delivery
+    // is insufficient to sustain photosynthesis.  Separate from the Gaussian
+    // hydroperiod_stress so the two can be tuned independently.
+    double compute_low_inundation_gpp_stressor(
+        const hydrology_diagnostics& hydro,
+        const parameter_set& parameters) const;
+
     // Exponential GPP decline above a root-zone salinity threshold.
     double compute_salinity_stress(
         const ecohydrology_state& eco_state,
