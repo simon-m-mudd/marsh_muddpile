@@ -21,22 +21,27 @@
 //
 // Depth is measured from the current surface to the mid-point of each layer.
 //
-// Default polynomial coefficients (depth in metres, DBD in g cm^-3):
-//   k1(d) = 0.027568*d^2 - 0.012864*d + 0.105944
-//   k2(d) = -0.313556*d^2 + 0.170120*d + 1.399719
-// Fitted to CCN synthesis depth-binned data (all countries, 7 bins, R^2 0.85/0.95).
+// Default linear coefficients (depth in metres, DBD in g cm^-3):
+//   k1(d) = 0.035029*d + 0.092574
+//   k2(d) = -0.375221*d + 1.552584
+// Fitted by OLS through the All-country CCN depth-binned data (six 20 cm bins
+// from 0 to 150 cm, 150+ bin excluded; n=85,122 layers; R^2 k1=0.72, k2=0.80).
+// Beyond 1.5 m the values are held constant at their 1.5 m level:
+//   k1(1.5m) = 0.1452 g/cm^3,  k2(1.5m) = 0.9898 g/cm^3.
+// The quadratic term (a2) is retained in the parameter interface for
+// backward-compatibility; set it to 0 (the default) to recover linear behaviour.
 //
 // Parameters exposed to the YAML config
 // --------------------------------------
-//   mixing_compaction_k1_a0   [g cm^-3]  default 0.105944
-//   mixing_compaction_k1_a1   [g cm^-3 m^-1]  default -0.012864
-//   mixing_compaction_k1_a2   [g cm^-3 m^-2]  default 0.027568
-//   mixing_compaction_k2_a0   [g cm^-3]  default 1.399719
-//   mixing_compaction_k2_a1   [g cm^-3 m^-1]  default 0.170120
-//   mixing_compaction_k2_a2   [g cm^-3 m^-2]  default -0.313556
+//   mixing_compaction_k1_a0   [g cm^-3]       default 0.092574
+//   mixing_compaction_k1_a1   [g cm^-3 m^-1]  default 0.035029
+//   mixing_compaction_k1_a2   [g cm^-3 m^-2]  default 0.0  (set non-zero for quadratic)
+//   mixing_compaction_k2_a0   [g cm^-3]       default 1.552584
+//   mixing_compaction_k2_a1   [g cm^-3 m^-1]  default -0.375221
+//   mixing_compaction_k2_a2   [g cm^-3 m^-2]  default 0.0  (set non-zero for quadratic)
 //   mixing_compaction_k1_min  [g cm^-3]  default 0.02   (prevents non-physical k1)
 //   mixing_compaction_k2_min  [g cm^-3]  default 0.20   (prevents non-physical k2)
-//   mixing_compaction_max_depth_m        default 2.0    (polynomial clamped beyond this)
+//   mixing_compaction_max_depth_m        default 1.5    (values clamped beyond this)
 // -----------------------------------------------------------------------------
 
 #include "marsh_model/processes/mixing_compaction_model.hpp"
@@ -74,12 +79,12 @@ double mixing_compaction_model::k1_at_depth(
     double depth_m,
     const parameter_set& parameters) const
 {
-    const double max_depth = get_param(parameters, "mixing_compaction_max_depth_m", 2.0);
+    const double max_depth = get_param(parameters, "mixing_compaction_max_depth_m", 1.5);
     const double d = std::min(depth_m, max_depth);
 
-    const double a0 = get_param(parameters, "mixing_compaction_k1_a0",  0.105944);
-    const double a1 = get_param(parameters, "mixing_compaction_k1_a1", -0.012864);
-    const double a2 = get_param(parameters, "mixing_compaction_k1_a2",  0.027568);
+    const double a0 = get_param(parameters, "mixing_compaction_k1_a0",  0.092574);
+    const double a1 = get_param(parameters, "mixing_compaction_k1_a1",  0.035029);
+    const double a2 = get_param(parameters, "mixing_compaction_k1_a2",  0.0);
     const double k_min = get_param(parameters, "mixing_compaction_k1_min", 0.02);
 
     const double k = a0 + a1 * d + a2 * d * d;
@@ -90,12 +95,12 @@ double mixing_compaction_model::k2_at_depth(
     double depth_m,
     const parameter_set& parameters) const
 {
-    const double max_depth = get_param(parameters, "mixing_compaction_max_depth_m", 2.0);
+    const double max_depth = get_param(parameters, "mixing_compaction_max_depth_m", 1.5);
     const double d = std::min(depth_m, max_depth);
 
-    const double a0 = get_param(parameters, "mixing_compaction_k2_a0",  1.399719);
-    const double a1 = get_param(parameters, "mixing_compaction_k2_a1",  0.170120);
-    const double a2 = get_param(parameters, "mixing_compaction_k2_a2", -0.313556);
+    const double a0 = get_param(parameters, "mixing_compaction_k2_a0",  1.552584);
+    const double a1 = get_param(parameters, "mixing_compaction_k2_a1", -0.375221);
+    const double a2 = get_param(parameters, "mixing_compaction_k2_a2",  0.0);
     const double k_min = get_param(parameters, "mixing_compaction_k2_min", 0.20);
 
     const double k = a0 + a1 * d + a2 * d * d;
@@ -218,6 +223,33 @@ void mixing_compaction_model::update_compaction(
     }
 
     state.set_layer_geometry(new_thickness, new_porosity, new_top_elev);
+}
+
+// ---------------------------------------------------------------------------
+// Initial-column equilibration
+// ---------------------------------------------------------------------------
+
+void mixing_compaction_model::equilibrate_initial_column(
+    column_state& state,
+    double target_surface_elevation_m,
+    const material_catalog& catalog,
+    const parameter_set& parameters) const
+{
+    if (state.n_layers() == 0) return;
+
+    // One compaction pass: equilibrates layer thicknesses from the current
+    // geometry (base fixed, surface floats to its mixing-model position).
+    forcing_step dummy{};
+    update_compaction(state, dummy, catalog, parameters);
+
+    // Shift the whole column so the surface is at target_surface_elevation_m.
+    const double shift = target_surface_elevation_m - state.get_surface_elevation();
+    if (std::abs(shift) < 1.0e-9) return;
+
+    state.set_layer_geometry(
+        state.layer_thickness(),
+        state.layer_porosity(),
+        state.layer_top_elevation() + shift);
 }
 
 } // namespace marsh_model

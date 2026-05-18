@@ -34,6 +34,7 @@ void column_state::resize(int n_layers, int n_materials)
     porewater_nh4_umol_per_L_ = Eigen::ArrayXd::Zero(n_layers);
     porewater_so4_umol_per_L_ = Eigen::ArrayXd::Zero(n_layers);
     porewater_ch4_umol_per_L_ = Eigen::ArrayXd::Zero(n_layers);
+    merge_generation_ = Eigen::ArrayXi::Zero(n_layers);
 }
 
 void column_state::append_surface_layer(const Eigen::ArrayXd& deposited_mass)
@@ -63,6 +64,7 @@ void column_state::append_surface_layer(const Eigen::ArrayXd& deposited_mass)
     porewater_nh4_umol_per_L_.conservativeResize(old_layers + 1);
     porewater_so4_umol_per_L_.conservativeResize(old_layers + 1);
     porewater_ch4_umol_per_L_.conservativeResize(old_layers + 1);
+    merge_generation_.conservativeResize(old_layers + 1);
 
     layer_thickness_(old_layers) = 0.0;
     layer_porosity_(old_layers) = 0.0;
@@ -71,6 +73,7 @@ void column_state::append_surface_layer(const Eigen::ArrayXd& deposited_mass)
     porewater_nh4_umol_per_L_(old_layers) = 0.0;
     porewater_so4_umol_per_L_(old_layers) = 0.0;
     porewater_ch4_umol_per_L_(old_layers) = 0.0;
+    merge_generation_(old_layers) = 0;
 }
 
 void column_state::add_mass_to_layers(const Eigen::ArrayXXd& delta_mass)
@@ -208,5 +211,15 @@ Eigen::ArrayXd& column_state::porewater_ch4()
 const Eigen::ArrayXd& column_state::porewater_ch4() const
 {
     return porewater_ch4_umol_per_L_;
+}
+
+Eigen::ArrayXi& column_state::merge_generation()
+{
+    return merge_generation_;
+}
+
+const Eigen::ArrayXi& column_state::merge_generation() const
+{
+    return merge_generation_;
 }
 }

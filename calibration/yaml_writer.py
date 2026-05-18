@@ -33,11 +33,14 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "water_density_kg_m3": 1000.0,
     "gravity_m_s2": 9.81,
 
-    # layer merging
-    "layer_merging_enable": 1.0,
-    "layer_merging_max_layers": 200.0,
-    "layer_merging_minimum_unmerged_depth_m": 0.30,
-    "layer_merging_target_thickness_m": 0.05,
+    # layer merging — hierarchical, incremental (no batch collapse)
+    # pairs merge once per depth level; merged layers carry a generation counter
+    # and cannot be re-merged at the same level
+    "layer_merging_enable":       1.0,
+    "layer_merging_depth_1_m":    0.5,   # first merge threshold (m)
+    "layer_merging_depth_2_m":    1.0,   # second merge threshold (m)
+    "layer_merging_depth_3_m":    2.0,   # third merge threshold (m)
+    "layer_merging_max_per_pass": 5.0,   # max merges per generation per timestep
 
     # water level / tidal substeps
     "water_level_substeps_per_step": 240,
@@ -248,6 +251,20 @@ _DEFAULT_PARAMETERS: Dict[str, Any] = {
     "compaction_min_effective_stress_kpa": 0.01,
     "compaction_reference_stress_kpa": 1.0,
     "compaction_min_void_ratio": 0.01,
+
+    # mixing_compaction (Morris et al. 2016 LOI-DBD mixing law)
+    # Linear k1/k2 polynomials fitted to All-country CCN depth-binned data
+    # (6 bins 0–150 cm, n=85,118; R² k1=0.52, k2=0.67).  Values clamped at
+    # max_depth_m (1.5 m); quadratic term a2 retained for interface but defaults 0.
+    "mixing_compaction_k1_a0":        0.092574,   # g cm^-3
+    "mixing_compaction_k1_a1":        0.035029,   # g cm^-3 m^-1
+    "mixing_compaction_k1_a2":        0.0,        # g cm^-3 m^-2 (quadratic term, unused)
+    "mixing_compaction_k2_a0":        1.552584,   # g cm^-3
+    "mixing_compaction_k2_a1":       -0.375221,   # g cm^-3 m^-1
+    "mixing_compaction_k2_a2":        0.0,        # g cm^-3 m^-2 (quadratic term, unused)
+    "mixing_compaction_k1_min":       0.02,       # g cm^-3
+    "mixing_compaction_k2_min":       0.20,       # g cm^-3
+    "mixing_compaction_max_depth_m":  1.5,        # depth beyond which k1/k2 are clamped
 }
 
 _DEFAULT_MATERIALS = [
@@ -270,7 +287,7 @@ _DEFAULT_MATERIALS = [
         "category": "mineral",
         "density": 2600.0,
         "allow_surface_deposition": True,
-        "settling": {"diameter": 1.5e-5, "settling_velocity": 1.5e-4},
+        "settling": {"diameter": 1.5e-5, "settling_velocity": 1.0e-5},
     },
     {
         "name": "refractory_organic",

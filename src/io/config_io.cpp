@@ -756,6 +756,13 @@ loaded_run_config config_io::load_run_config(const std::string& yaml_file)
     config.forcing = parse_forcing_series(root["forcing"]);
     config.initial_state =
         parse_initial_state(root["initial_state"], config.materials);
+
+    if (root["initial_state"] && root["initial_state"]["equilibrate_surface_m"])
+    {
+        config.initial_equilibrate_surface_m =
+            root["initial_state"]["equilibrate_surface_m"].as<double>();
+    }
+
     config.initial_ecohydrology_state =
         parse_initial_ecohydrology_state(root["initial_ecohydrology_state"]);
     config.site =

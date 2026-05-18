@@ -29,7 +29,7 @@
 #include "marsh_model/core/site_properties.hpp"
 #include "marsh_model/core/output_config.hpp"
 
-
+#include <optional>
 #include <string>
 
 namespace marsh_model
@@ -42,6 +42,12 @@ struct loaded_run_config
     forcing_series forcing;
 
     column_state initial_state;
+
+    // When set, the initial column will be equilibrated with mixing_compaction
+    // and then shifted so its surface lands at this elevation (m).
+    // Parsed from initial_state.equilibrate_surface_m in the YAML.
+    std::optional<double> initial_equilibrate_surface_m;
+
     ecohydrology_state initial_ecohydrology_state;
     site_properties site;
     output_config output;

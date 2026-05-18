@@ -53,6 +53,22 @@ public:
         const material_catalog& catalog,
         const parameter_set& parameters) const override;
 
+    // Equilibrate the initial column to a target surface elevation.
+    //
+    // Applies one pass of the mixing-law DBD formula to bring each layer to its
+    // equilibrium thickness (keeping the column base fixed), then shifts the
+    // entire column so the surface lands exactly at target_surface_elevation_m.
+    //
+    // Call this once during initialization when the YAML specifies
+    // initial_state.equilibrate_surface_m.  Without it, columns whose
+    // specified porosity is inconsistent with the mixing model will jump to an
+    // unintended elevation on the first compaction step.
+    void equilibrate_initial_column(
+        column_state& state,
+        double target_surface_elevation_m,
+        const material_catalog& catalog,
+        const parameter_set& parameters) const;
+
 private:
     // Compute LOI (organic mass fraction) for one layer.
     double compute_loi(

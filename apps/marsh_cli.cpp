@@ -19,6 +19,7 @@
 #include "marsh_model/engine/simulator.hpp"
 #include "marsh_model/io/config_io.hpp"
 #include "marsh_model/io/result_io.hpp"
+#include "marsh_model/processes/mixing_compaction_model.hpp"
 
 #include <algorithm>
 #include <iomanip>
@@ -39,7 +40,7 @@ void run_from_yaml(const std::string& config_file, bool silent)
 {
     using namespace marsh_model;
 
-    const loaded_run_config loaded =
+    loaded_run_config loaded =
         config_io::load_run_config(config_file);
 
     const int n_forcing = loaded.forcing.size();
@@ -85,6 +86,25 @@ void run_from_yaml(const std::string& config_file, bool silent)
     const auto compaction =
         process_factory::create_compaction_model(
             loaded.simulation.compaction_model_name);
+
+    // Equilibrate initial column to target surface elevation when requested.
+    // Only supported with mixing_compaction; warn and skip otherwise.
+    if (loaded.initial_equilibrate_surface_m.has_value())
+    {
+        if (loaded.simulation.compaction_model_name == "mixing_compaction")
+        {
+            mixing_compaction_model{}.equilibrate_initial_column(
+                loaded.initial_state,
+                *loaded.initial_equilibrate_surface_m,
+                loaded.materials,
+                loaded.parameters);
+        }
+        else if (!silent)
+        {
+            std::cerr << "warning: initial_state.equilibrate_surface_m requires "
+                         "compaction_model_name: mixing_compaction -- ignored\n";
+        }
+    }
 
     simulator model(
         water_level,

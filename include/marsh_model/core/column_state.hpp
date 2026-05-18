@@ -70,6 +70,11 @@ public:
     Eigen::ArrayXd& porewater_ch4();
     const Eigen::ArrayXd& porewater_ch4() const;
 
+    // Number of times this layer has been merged (0 = original, 1 = merged once, …).
+    // Used by the hierarchical layer merger to prevent re-merging at the same level.
+    Eigen::ArrayXi& merge_generation();
+    const Eigen::ArrayXi& merge_generation() const;
+
 private:
     Eigen::ArrayXXd mass_;
     Eigen::ArrayXd layer_thickness_;
@@ -79,5 +84,6 @@ private:
     Eigen::ArrayXd porewater_nh4_umol_per_L_;
     Eigen::ArrayXd porewater_so4_umol_per_L_;
     Eigen::ArrayXd porewater_ch4_umol_per_L_;
+    Eigen::ArrayXi merge_generation_;
 };
 }

@@ -208,19 +208,19 @@ def plot_country(df: pd.DataFrame, country_label: str, out_path: Path,
 
 
 # ---------------------------------------------------------------------------
-# Polynomial fit helper
+# Linear fit helper
 # ---------------------------------------------------------------------------
 
-def fit_poly2(x, y):
-    """Fit a 2nd-order polynomial; return (coeffs, r2).  x, y are arrays."""
+def fit_linear(x, y):
+    """Fit a 1st-order (linear) polynomial; return (a0, a1, r2).  x, y are arrays."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
-    coeffs = np.polyfit(x, y, 2)          # [a2, a1, a0]
+    coeffs = np.polyfit(x, y, 1)          # [a1, a0]
     pred   = np.polyval(coeffs, x)
     ss_res = np.sum((y - pred) ** 2)
     ss_tot = np.sum((y - y.mean()) ** 2)
     r2     = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
-    return coeffs, r2
+    return coeffs[1], coeffs[0], r2       # a0, a1, r2
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +230,10 @@ def fit_poly2(x, y):
 def plot_param_trends(params_df: pd.DataFrame, out_path: Path) -> None:
     countries  = params_df["country"].unique()
     colors     = {"USA": "#1b7837", "UK": "#762a83", "All": "#d95f02"}
-    poly_ls    = {"USA": "--",      "UK": "-.",      "All": "-"}
-    depth_line = np.linspace(0, 200, 300)   # cm
+    line_ls    = {"USA": "--",      "UK": "-.",      "All": "-"}
+    max_depth_cm = 150.0
+    depth_line = np.linspace(0, 200, 300)   # cm for plotting
+    depth_fit  = np.clip(depth_line, 0, max_depth_cm)  # clamp beyond 150 cm
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
 
@@ -241,10 +243,11 @@ def plot_param_trends(params_df: pd.DataFrame, out_path: Path) -> None:
     ]:
         ax.axhline(morris_val, color="k", ls=":", lw=1.5,
                    label=f"Morris 2016 ({morris_val})")
+        ax.axvline(max_depth_cm, color="0.7", ls=":", lw=1.0)
 
         for country in countries:
             sub = params_df[params_df["country"] == country].sort_values("depth_mid_cm")
-            if len(sub) < 3:
+            if len(sub) < 2:
                 continue
             col = colors.get(country, "grey")
 
@@ -254,24 +257,22 @@ def plot_param_trends(params_df: pd.DataFrame, out_path: Path) -> None:
                         fmt="o", color=col, capsize=4, lw=1.5, ms=6,
                         label=f"{country} bins")
 
-            # 2nd-order polynomial fit
-            coeffs, r2 = fit_poly2(sub["depth_mid_cm"].values, sub[param].values)
-            fit_vals = np.polyval(coeffs, depth_line)
+            # Linear fit (depth in cm for display, m for coefficients)
+            x_cm = sub["depth_mid_cm"].values
+            x_m  = x_cm / 100.0
+            a0, a1, r2 = fit_linear(x_m, sub[param].values)
+            fit_vals = a0 + a1 * (depth_fit / 100.0)
             ax.plot(depth_line, fit_vals,
-                    color=col, ls=poly_ls.get(country, "-"), lw=2.0,
-                    label=f"{country} poly fit  R²={r2:.3f}\n"
-                          f"  a₀={coeffs[2]:.5f}  a₁={coeffs[1]:.5f}  a₂={coeffs[0]:.5f}")
+                    color=col, ls=line_ls.get(country, "-"), lw=2.0,
+                    label=f"{country} linear fit  R²={r2:.3f}\n"
+                          f"  a₀={a0:.5f}  a₁={a1:.5f} (clamped at 150 cm)")
 
-            # Print coefficients to stdout (depth in cm and metres)
-            coeffs_m, _ = fit_poly2([d / 100 for d in sub["depth_mid_cm"].values],
-                                    sub[param].values)
-            print(f"  {country:5s} {param}: a0={coeffs_m[2]:.6f}  "
-                  f"a1={coeffs_m[1]:.6f}  a2={coeffs_m[0]:.6f}  R²={r2:.4f}  "
-                  f"(depth in m)")
+            print(f"  {country:5s} {param}: a0={a0:.6f}  a1={a1:.6f}  "
+                  f"R²={r2:.4f}  (depth in m, clamped at {max_depth_cm:.0f} cm)")
 
         ax.set_xlabel("Depth bin mid-point (cm)", fontsize=11)
         ax.set_ylabel(ylabel, fontsize=11)
-        ax.set_title(f"Best-fit {param} vs depth — 2nd-order polynomial", fontsize=10)
+        ax.set_title(f"Best-fit {param} vs depth — linear (clamped at 150 cm)", fontsize=10)
         ax.set_xlim(0, 175)
         ax.legend(fontsize=7, loc="upper right" if param == "k2" else "lower right")
         ax.grid(True, alpha=0.3)

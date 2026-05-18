@@ -9,20 +9,30 @@
 // See LICENSE file or https://www.gnu.org/licenses/gpl-3.0.html
 //
 // -----------------------------------------------------------------------------
-// this component coarsens the marsh stratigraphic column by merging deeper
-// adjacent layers when the number of layers becomes too large.
+// Hierarchical layer merging: coarsens the stratigraphic column incrementally
+// as layers are buried, using three depth thresholds.
 //
-// the purpose is to reduce computational cost during long forward runs while
-// preserving high resolution near the marsh surface, where deposition,
-// root input, decay, and recent stratigraphy are most dynamic.
+// Each layer carries a merge_generation counter (0 = never merged).
+// A pair of adjacent layers can merge at level g only when:
+//   - both layers have merge_generation == g, AND
+//   - the top of the shallower layer is at least depth_threshold[g] below
+//     the current surface.
+// The resulting layer gets merge_generation = g + 1, preventing it from
+// being re-merged at the same level.
 //
-// this stronger version can:
+// Merging happens in a single forward scan per generation per time step, so
+// at most one merge event per pair per call — no batch collapses.
 //
-//   1. force layer count down to a maximum by merging the deepest eligible
-//      layers below a protected shallow zone
-//   2. optionally continue coarsening deep thin layers toward a target deep
-//      layer thickness
-//
+// Parameters (all optional, with defaults):
+//   layer_merging_enable        default 0  (set to 1 to enable)
+//   layer_merging_depth_1_m     default 0.5   first merge threshold (m)
+//   layer_merging_depth_2_m     default 1.0   second merge threshold (m)
+//   layer_merging_depth_3_m     default 2.0   third merge threshold (m)
+//   layer_merging_max_per_pass  default 5     max merges per generation per timestep
+//                               Rate-limits merges so a large cohort of same-
+//                               generation layers crossing a threshold simultaneously
+//                               does not produce a burst of compaction-driven
+//                               surface elevation changes (sawtooth artifact).
 // -----------------------------------------------------------------------------
 
 #include "marsh_model/core/column_state.hpp"
@@ -38,21 +48,17 @@ public:
         const parameter_set& parameters);
 
 private:
-    static bool is_below_protected_surface_zone(
-        const column_state& state,
-        int upper_layer_index,
-        const parameter_set& parameters);
-
-    static bool should_merge_for_target_thickness(
-        const column_state& state,
-        int lower_layer_index,
-        int upper_layer_index,
-        const parameter_set& parameters);
+    static void merge_one_pass(
+        column_state& state,
+        int generation,
+        double depth_threshold_m,
+        int max_merges);
 
     static void merge_adjacent_layers(
         column_state& state,
         int lower_layer_index,
-        int upper_layer_index);
+        int upper_layer_index,
+        int result_generation);
 
     static void recompute_top_elevations(
         column_state& state,

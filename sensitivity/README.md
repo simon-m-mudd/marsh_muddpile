@@ -294,6 +294,63 @@ python sensitivity/porewater_chemistry_north_inlet.py
 
 ---
 
+### `ni_long_profile.py`
+
+**300-year** marsh column simulations at North Inlet starting from MHW on a
+sand substrate.  Four sea-level rise scenarios are compared to examine how SLR
+rate controls long-term accretion, organic carbon accumulation, and depth
+profiles of LOI, root carbon, labile organic C, and refractory organic C.
+
+**Site and forcing**
+
+| Parameter | Value |
+|-----------|-------|
+| Site | North Inlet, SC (Goat Island / high marsh) |
+| Start elevation | 0.625 m NAVD88 (MHW) |
+| SSC | 10 mg/L |
+| Distance from creek | 30 m |
+| SLR scenarios | 2, 3, 4, 5 mm/yr |
+| Duration | 300 yr |
+| Snapshot interval | every 36 steps (~3 yr) |
+
+**Key model settings**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| `fine_silt` settling velocity | 1×10⁻⁵ m/s | Back-calculated from Morris (2013) Goat Island mineral deposition rate (0.0635 g cm⁻² yr⁻¹, SSC = 28 mg/L, 30 m from creek) |
+| `vegetation_hydroperiod_sigma_fraction` | 0.25 | |
+| `vegetation_inundation_sigma_fraction` | 0.22 | |
+| `vegetation_aboveground_capacity_kg_m2` | 0.95 | Calibrated against Morris (2013) biomass–elevation data |
+| `vegetation_lue_gC_per_umol` | 1.6×10⁻⁶ | |
+| `layer_merging_enable` | 0 | **Disabled.** Layer merging caused periodic ~1–1.4 mm amplitude sawtooth artifacts in accretion rate: when ~1500 accumulated monthly layers simultaneously crossed the first depth threshold (0.5 m), a batch of ~750 merge pairs fired over a few timesteps, producing compaction-driven surface elevation drops. The artifact timing was SLR-dependent (each scenario's surface reached the 0.5 m threshold at a different year), confirming layer merging as the cause. |
+| Initial column | 100 layers × 1 cm, pure sand | 100 layers chosen to match the 1 cm depth-profile bin resolution; coarser layers (e.g. 20 × 5 cm) produce step artifacts in depth profiles at the 5 cm layer boundaries. |
+
+**Plots**
+
+*`ni_long_profile.png`* — four-panel depth profiles (0–200 cm) at end of run:
+LOI (%), live root wt%, labile organic wt%, refractory organic wt%.  Dashed
+horizontal lines mark the depth of the original sand surface for each SLR
+scenario.
+
+*`ni_long_profile_rates.png`* — 2×4 time series from year 5 to year 300:
+surface accretion rate (mm yr⁻¹), mineral accumulation rate (kg m⁻² yr⁻¹),
+organic accumulation rate (kg m⁻² yr⁻¹), mean inundation depth (m),
+inundation fraction, aboveground biomass (kg m⁻²), belowground biomass
+(kg m⁻²), surface elevation (m NAVD88).  First 5 years omitted to hide
+biomass establishment transient.  No temporal smoothing applied.
+
+**Outputs** (`runs/ni_long_profile/`, `figures/`):
+`ni_lp_slr{2,3,4,5}.{yaml,nc}`,
+`ni_long_profile.png`, `ni_long_profile_rates.png`
+
+```bash
+python sensitivity/ni_long_profile.py --binary ./build/marsh_cli
+python sensitivity/ni_long_profile.py --plot-only
+python sensitivity/ni_long_profile.py --force --binary ./build/marsh_cli
+```
+
+---
+
 ### `restoration_experiment.py`
 
 50-year colonisation runs starting from **bare sand** — simulating marsh
@@ -338,6 +395,7 @@ sensitivity/
     brain_compaction_test/
       brain/                    Brain two-stage model runs
       mixing/                   Mixing compaction model runs
+    ni_long_profile/            ni_long_profile runs (4 SLR scenarios × 300 yr)
     carbon_pool_test/           carbon_pool_test run
   figures/                      All saved PNG figures
 ```

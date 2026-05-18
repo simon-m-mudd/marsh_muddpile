@@ -49,6 +49,7 @@ except ImportError as exc:
 
 try:
     import matplotlib.pyplot as plt
+    import matplotlib
 except ImportError as exc:
     raise ImportError("matplotlib required: pip install matplotlib") from exc
 
@@ -58,8 +59,8 @@ except ImportError as exc:
 # ---------------------------------------------------------------------------
 
 SLR_RATES_M_YR  = [0.002, 0.003, 0.004, 0.005]
-RUN_YEARS       = 500
-MARKER_YEAR     = 470              # year marker is emplaced
+RUN_YEARS       = 300
+MARKER_YEAR     = 270              # year marker is emplaced
 INITIAL_ELEV_M  = 0.625            # MHW at North Inlet (m NAVD88)
 SSC_KG_M3       = 0.010            # 10 mg/L
 SEED_BIOMASS    = 0.1              # kg/m²
@@ -82,33 +83,9 @@ FIGURE_DIR = _THIS_DIR / "figures"
 
 COLORS = ["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728"]
 
-
-def _build_sand_column(surface_elevation_m: float,
-                       n_layers: int = 20,
-                       layer_thickness_m: float = 0.05) -> List[dict]:
-    """Pure-sand initial column in equilibrium with mixing_compaction.
-
-    mixing_compaction assigns DBD = k2(d) for zero-LOI material, where
-    k2(0) ≈ 1400 kg/m³.  The equilibrium porosity for sand (rho=2650) is
-    1 - 1400/2650 = 0.472.  Using this porosity at startup gives < 2 cm
-    surface displacement when the model first applies mixing_compaction.
-    """
-    SAND_POROSITY = 0.472
-    RHO_SAND = 2650.0
-    solid_vol = (1.0 - SAND_POROSITY) * layer_thickness_m
-    sand_mass = round(RHO_SAND * solid_vol, 4)
-
-    layers = []
-    for i in range(n_layers):
-        top_elev = surface_elevation_m - i * layer_thickness_m
-        layers.append({
-            "top_elevation_m": round(top_elev, 4),
-            "thickness_m":     layer_thickness_m,
-            "porosity":        SAND_POROSITY,
-            "age_days":        0.0,
-            "mass_kg_m2":      {"sand": sand_mass},
-        })
-    return layers
+ANIM_FPS        = 15
+ANIM_BIN_M      = 0.01     # 1 cm elevation bins for animation
+ANIM_STEP_YR    = 3        # one frame every N years
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +130,7 @@ def _write_yaml(slr_m_yr: float, yaml_path: Path) -> None:
     config.initial_salinity_ppt = tides.creek_salinity_ppt
 
     parameters = dict(_DEFAULT_PARAMETERS)
+    parameters["layer_merging_enable"] = 0.0   # disabled: merging causes sawtooth artifacts
     parameters.update(_tidal_params(tides))
     parameters["deposition_distance_from_edge_m"]      = NI_DISTANCE_M
     parameters.setdefault("deposition_basin_length_m",    50.0)
@@ -187,7 +165,15 @@ def _write_yaml(slr_m_yr: float, yaml_path: Path) -> None:
         "parameters": parameters,
         "materials":  _DEFAULT_MATERIALS,
         "forcing":    {"generated": build_generated_forcing_block(config)},
-        "initial_state": {"layers": _build_sand_column(INITIAL_ELEV_M)},
+        "initial_state": {
+            "equilibrate_surface_m": INITIAL_ELEV_M,
+            "uniform_column": {
+                "n_layers":          100,
+                "total_thickness_m": 1.0,
+                "fill_material":     "sand",
+                "porosity":          0.40,
+            },
+        },
         "initial_ecohydrology_state": {
             "root_zone_salinity_ppt":    config.initial_salinity_ppt,
             "aboveground_biomass_kg_m2": SEED_BIOMASS,
@@ -199,7 +185,7 @@ def _write_yaml(slr_m_yr: float, yaml_path: Path) -> None:
             "file":                    str(yaml_path).replace(".yaml", ".nc"),
             "write_time_series":       True,
             "write_column_snapshots":  True,
-            "snapshot_every_n_steps":  60,   # every 5 years
+            "snapshot_every_n_steps":  36,   # every 3 years
         },
     }
 
@@ -269,15 +255,21 @@ def _decode_mat_names(raw) -> List[str]:
 
 def _read_profile(nc_path: Path, slr_m_yr: float) -> Optional[dict]:
     with nc4.Dataset(str(nc_path)) as ds:
-        t       = np.array(ds["model_time_days"][:],           dtype=np.float64)
-        surf_ts = np.array(ds["surface_elevation"][:],         dtype=np.float64)
-        abg_ts  = np.array(ds["aboveground_biomass_kg_m2"][:], dtype=np.float64)
+        t       = np.array(ds["model_time_days"][:],              dtype=np.float64)
+        surf_ts = np.array(ds["surface_elevation"][:],            dtype=np.float64)
+        abg_ts  = np.array(ds["aboveground_biomass_kg_m2"][:],    dtype=np.float64)
+        blg_ts  = np.array(ds["belowground_biomass_kg_m2"][:],    dtype=np.float64)
+        if_ts   = np.array(ds["inundation_fraction"][:],          dtype=np.float64)
+        mid_ts  = np.array(ds["mean_inundation_depth_m"][:],      dtype=np.float64)
+        mass_ts = np.array(ds["total_mass_by_material"][:],       dtype=np.float64)
 
         mat_names = _decode_mat_names(ds["material_name"][:])
         sand_i  = mat_names.index("sand")
         lab_i   = mat_names.index("labile_organic")
         ref_i   = mat_names.index("refractory_organic")
         root_i  = mat_names.index("roots")
+        silt_indices = [i for i, n in enumerate(mat_names)
+                        if "silt" in n.lower() or n.lower() == "fine_silt"]
 
         # surface elevation at marker emplacement (year 470)
         idx_470       = int(np.argmin(np.abs(t - MARKER_YEAR * 365.25)))
@@ -349,17 +341,79 @@ def _read_profile(nc_path: Path, slr_m_yr: float) -> Optional[dict]:
 
     bin_centres = (bins[:-1] + bins[1:]) / 2.0
     valid = bin_thick > 1e-6
-    bin_dbd = np.where(valid, bin_mass_total   / bin_thick,       0.0)
     bin_loi = np.where(valid, bin_mass_organic / np.where(bin_mass_total > 1e-9,
                                                            bin_mass_total, 1.0) * 100.0, 0.0)
     bin_loi[~valid] = np.nan
-    bin_dbd[~valid] = np.nan
+
+    # Root, labile, and refractory weight fractions per depth bin
+    bin_mass_root   = np.zeros(n_bins)
+    bin_mass_labile = np.zeros(n_bins)
+    bin_mass_ref    = np.zeros(n_bins)
+    for k in range(n_lay):
+        if thick[k] <= 0:
+            continue
+        depth_top_cm = (surf_final - top_elev[k]) * 100.0
+        depth_bot_cm = depth_top_cm + thick[k] * 100.0
+        for b in range(n_bins):
+            lo = bins[b]; hi = bins[b + 1]
+            overlap = max(0.0, min(depth_bot_cm, hi) - max(depth_top_cm, lo))
+            if overlap <= 0:
+                continue
+            frac = overlap / (depth_bot_cm - depth_top_cm)
+            bin_mass_root[b]   += mass[k, root_i] * frac
+            bin_mass_labile[b] += mass[k, lab_i]  * frac
+            bin_mass_ref[b]    += mass[k, ref_i]  * frac
+
+    # weight percent (mass of component / total mass in bin × 100)
+    denom = np.where(bin_mass_total > 1e-9, bin_mass_total, np.nan)
+    bin_root_wt_pct   = np.where(valid, bin_mass_root   / denom * 100.0, np.nan)
+    bin_labile_wt_pct = np.where(valid, bin_mass_labile / denom * 100.0, np.nan)
+    bin_ref_wt_pct    = np.where(valid, bin_mass_ref    / denom * 100.0, np.nan)
+
+    # --- Annual smoothed rate time series ---
+    # Compute annual totals by binning into 1-yr windows
+    years_edge = np.arange(0.0, RUN_YEARS + 1.0, 1.0)
+    t_yr       = t / 365.25
+    n_yr       = len(years_edge) - 1
+
+    mineral_ts = mass_ts[:, silt_indices].sum(axis=1)          # kg/m²
+    organic_ts = mass_ts[:, lab_i] + mass_ts[:, ref_i]         # kg/m²  (excl. roots)
+
+    rate_yr      = np.full(n_yr, np.nan)
+    mineral_yr   = np.full(n_yr, np.nan)
+    organic_yr   = np.full(n_yr, np.nan)
+    abg_yr       = np.full(n_yr, np.nan)
+    blg_yr       = np.full(n_yr, np.nan)
+    if_yr        = np.full(n_yr, np.nan)
+    mid_yr       = np.full(n_yr, np.nan)
+
+    for yi in range(n_yr):
+        lo, hi = years_edge[yi], years_edge[yi + 1]
+        mask_lo = np.searchsorted(t_yr, lo)
+        mask_hi = np.searchsorted(t_yr, hi)
+        if mask_hi <= mask_lo:
+            continue
+        sl = slice(mask_lo, mask_hi)
+        # elevation change over the year (m → mm)
+        rate_yr[yi]    = (surf_ts[mask_hi - 1] - surf_ts[mask_lo]) * 1000.0
+        # mass change over the year (kg/m²/yr)
+        mineral_yr[yi] = mineral_ts[mask_hi - 1] - mineral_ts[mask_lo]
+        organic_yr[yi] = organic_ts[mask_hi - 1] - organic_ts[mask_lo]
+        # annual means
+        abg_yr[yi] = abg_ts[sl].mean()
+        blg_yr[yi] = blg_ts[sl].mean()
+        if_yr[yi]  = if_ts[sl].mean()
+        mid_yr[yi] = mid_ts[sl].mean()
+
+    rate_years = (years_edge[:-1] + years_edge[1:]) / 2.0
 
     return {
         "slr_m_yr":           slr_m_yr,
         "depth_cm":           bin_centres,
         "loi":                bin_loi,
-        "dbd":                bin_dbd,
+        "roots_wt_pct":       bin_root_wt_pct,
+        "labile_wt_pct":      bin_labile_wt_pct,
+        "ref_wt_pct":         bin_ref_wt_pct,
         "valid":              valid,
         "surf_final":         surf_final,
         "elev_at_marker":     elev_at_marker,
@@ -367,6 +421,15 @@ def _read_profile(nc_path: Path, slr_m_yr: float) -> Optional[dict]:
         "subsidence_m_yr":    subsidence_m_yr,
         "accretion_m_yr":     accretion_m_yr,
         "final_abg":          float(abg_ts[-1]),
+        # time series (unsmoothed)
+        "rate_years":         rate_years,
+        "rate_mm_yr":         rate_yr,
+        "mineral_kg_m2_yr":   mineral_yr,
+        "organic_kg_m2_yr":   organic_yr,
+        "abg_kg_m2":          abg_yr,
+        "blg_kg_m2":          blg_yr,
+        "inundation_fraction": if_yr,
+        "mean_inundation_depth_m": mid_yr,
     }
 
 
@@ -375,8 +438,8 @@ def _read_profile(nc_path: Path, slr_m_yr: float) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 def _plot(profiles: List[dict], save: bool) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(14, 8))
-    ax_loi, ax_dbd, ax_sc = axes
+    fig, axes = plt.subplots(1, 4, figsize=(18, 8))
+    ax_loi, ax_root, ax_lab, ax_ref = axes
 
     max_depth_cm = 200.0
 
@@ -386,40 +449,49 @@ def _plot(profiles: List[dict], save: bool) -> None:
         depth_cm = prof["depth_cm"]
         mask  = prof["valid"] & (depth_cm <= max_depth_cm)
 
-        ax_loi.plot(prof["loi"][mask], depth_cm[mask], color=col, lw=1.8, label=label)
-        ax_dbd.plot(prof["dbd"][mask], depth_cm[mask], color=col, lw=1.8, label=label)
-        ax_sc.scatter(prof["loi"][mask], prof["dbd"][mask],
-                      color=col, s=12, alpha=0.55, label=label)
+        # depth at which initial sand surface lies
+        init_depth_cm = (prof["surf_final"] - INITIAL_ELEV_M) * 100.0
 
-    for ax in (ax_loi, ax_dbd):
+        ax_loi.plot(prof["loi"][mask],           depth_cm[mask], color=col, lw=1.8, label=label)
+        ax_root.plot(prof["roots_wt_pct"][mask],  depth_cm[mask], color=col, lw=1.8, label=label)
+        ax_lab.plot(prof["labile_wt_pct"][mask],  depth_cm[mask], color=col, lw=1.8, label=label)
+        ax_ref.plot(prof["ref_wt_pct"][mask],     depth_cm[mask], color=col, lw=1.8, label=label)
+
+        for ax in (ax_loi, ax_root, ax_lab, ax_ref):
+            ax.axhline(init_depth_cm, color=col, lw=0.8, ls="--", alpha=0.6)
+
+    for ax in (ax_loi, ax_root, ax_lab, ax_ref):
         ax.invert_yaxis()
         ax.set_ylim(max_depth_cm, 0)
+        ax.set_xlim(left=0)
         ax.grid(True, lw=0.3, alpha=0.4)
         ax.tick_params(labelsize=9)
         ax.set_ylabel("Depth (cm)", fontsize=10)
 
     ax_loi.set_xlabel("LOI (%)", fontsize=10)
-    ax_loi.set_xlim(left=0)
     ax_loi.legend(fontsize=8)
     ax_loi.set_title("Loss on ignition vs depth", fontsize=10)
 
-    ax_dbd.set_xlabel("Dry bulk density (kg m⁻³)", fontsize=10)
-    ax_dbd.legend(fontsize=8)
-    ax_dbd.set_title("Dry bulk density vs depth", fontsize=10)
+    ax_root.set_xlabel("Weight %", fontsize=10)
+    ax_root.legend(fontsize=8)
+    ax_root.set_title("Live root wt% vs depth", fontsize=10)
 
-    ax_sc.set_xlabel("LOI (%)", fontsize=10)
-    ax_sc.set_ylabel("Dry bulk density (kg m⁻³)", fontsize=10)
-    ax_sc.grid(True, lw=0.3, alpha=0.4)
-    ax_sc.legend(fontsize=8)
-    ax_sc.set_title("DBD vs LOI", fontsize=10)
+    ax_lab.set_xlabel("Weight %", fontsize=10)
+    ax_lab.legend(fontsize=8)
+    ax_lab.set_title("Labile organic wt% vs depth", fontsize=10)
+
+    ax_ref.set_xlabel("Weight %", fontsize=10)
+    ax_ref.legend(fontsize=8)
+    ax_ref.set_title("Refractory organic wt% vs depth", fontsize=10)
 
     sub_str = "  ".join(
         "SLR%d → %.1f mm/yr" % (round(p["slr_m_yr"]*1000), p["subsidence_m_yr"]*1000)
         for p in profiles
     )
     fig.suptitle(
-        "500-yr NI  |  start MHW %.2f m NAVD88  |  SSC=10 mg/L  |  30 m from creek\n"
-        "Marker subsidence (yr 470–500):  %s" % (INITIAL_ELEV_M, sub_str),
+        "%d-yr NI  |  start MHW %.2f m NAVD88  |  SSC=10 mg/L  |  30 m from creek\n"
+        "Marker subsidence (yr %d–%d):  %s" % (
+            RUN_YEARS, INITIAL_ELEV_M, MARKER_YEAR, RUN_YEARS, sub_str),
         fontsize=9,
     )
 
@@ -428,6 +500,90 @@ def _plot(profiles: List[dict], save: bool) -> None:
     if save:
         FIGURE_DIR.mkdir(parents=True, exist_ok=True)
         out = FIGURE_DIR / "ni_long_profile.png"
+        fig.savefig(out, dpi=150, bbox_inches="tight")
+        print("Saved: %s" % out)
+    else:
+        plt.show()
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Accretion rate through time
+# ---------------------------------------------------------------------------
+
+def _plot_rates(profiles: List[dict], save: bool) -> None:
+    fig, axes = plt.subplots(2, 4, figsize=(20, 9))
+    (ax_acc, ax_min, ax_org, ax_mid), (ax_if, ax_abg, ax_blg, ax_surf) = axes
+
+    PLOT_START_YR = 5
+    for prof, col in zip(profiles, COLORS):
+        mm    = round(prof["slr_m_yr"] * 1000)
+        label = "SLR %d mm/yr" % mm
+        yrs   = prof["rate_years"]
+        m     = yrs >= PLOT_START_YR
+
+        ax_acc.plot(yrs[m], prof["rate_mm_yr"][m],              color=col, lw=1.6, label=label)
+        ax_min.plot(yrs[m], prof["mineral_kg_m2_yr"][m],        color=col, lw=1.6, label=label)
+        ax_org.plot(yrs[m], prof["organic_kg_m2_yr"][m],        color=col, lw=1.6, label=label)
+        ax_mid.plot(yrs[m], prof["mean_inundation_depth_m"][m], color=col, lw=1.6, label=label)
+        ax_if.plot( yrs[m], prof["inundation_fraction"][m],     color=col, lw=1.6, label=label)
+        ax_abg.plot(yrs[m], prof["abg_kg_m2"][m],               color=col, lw=1.6, label=label)
+        ax_blg.plot(yrs[m], prof["blg_kg_m2"][m],               color=col, lw=1.6, label=label)
+        # surface elevation (raw annual mean, unsmoothed)
+        with nc4.Dataset(str(OUTPUT_DIR / ("%s.nc" % _run_id(prof["slr_m_yr"])))) as ds:
+            t_raw   = np.array(ds["model_time_days"][:], dtype=np.float64)
+            surf_raw = np.array(ds["surface_elevation"][:], dtype=np.float64)
+        t_yr_raw = t_raw / 365.25
+        ann_surf = np.full(RUN_YEARS, np.nan)
+        for yi in range(RUN_YEARS):
+            lo = np.searchsorted(t_yr_raw, float(yi))
+            hi = np.searchsorted(t_yr_raw, float(yi + 1))
+            if hi > lo:
+                ann_surf[yi] = surf_raw[lo:hi].mean()
+        surf_yrs = np.arange(1, RUN_YEARS + 1)
+        sm = surf_yrs >= PLOT_START_YR
+        ax_surf.plot(surf_yrs[sm], ann_surf[sm], color=col, lw=1.0, label=label)
+
+    for slr, col in zip(SLR_RATES_M_YR, COLORS):
+        ax_acc.axhline(slr * 1000, color=col, lw=0.8, ls=":", alpha=0.5)
+
+    for ax in axes.flat:
+        ax.set_xlabel("Year", fontsize=10)
+        ax.set_xlim(PLOT_START_YR, RUN_YEARS)
+        ax.grid(True, lw=0.3, alpha=0.4)
+        ax.tick_params(labelsize=9)
+        ax.legend(fontsize=8)
+
+    for ax in (ax_acc, ax_min, ax_org, ax_mid, ax_if, ax_abg, ax_blg):
+        ax.set_ylim(bottom=0)
+
+    ax_acc.set_ylabel("mm yr⁻¹",     fontsize=10)
+    ax_acc.set_title("Surface accretion rate",               fontsize=10)
+    ax_min.set_ylabel("kg m⁻² yr⁻¹", fontsize=10)
+    ax_min.set_title("Mineral accumulation rate",            fontsize=10)
+    ax_org.set_ylabel("kg m⁻² yr⁻¹", fontsize=10)
+    ax_org.set_title("Organic (labile+ref) accumulation",   fontsize=10)
+    ax_mid.set_ylabel("m",            fontsize=10)
+    ax_mid.set_title("Mean inundation depth",                fontsize=10)
+    ax_if.set_ylabel( "fraction",     fontsize=10)
+    ax_if.set_title( "Inundation fraction",                  fontsize=10)
+    ax_abg.set_ylabel("kg m⁻²",      fontsize=10)
+    ax_abg.set_title("Aboveground biomass",                  fontsize=10)
+    ax_blg.set_ylabel("kg m⁻²",      fontsize=10)
+    ax_blg.set_title("Belowground biomass",                  fontsize=10)
+    ax_surf.set_ylabel("m NAVD88",    fontsize=10)
+    ax_surf.set_title("Surface elevation (annual mean)",     fontsize=10)
+
+    fig.suptitle(
+        "%d-yr NI  |  start MHW %.2f m NAVD88  |  SSC=10 mg/L  |  30 m from creek" % (
+            RUN_YEARS, INITIAL_ELEV_M),
+        fontsize=10,
+    )
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+    if save:
+        FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+        out = FIGURE_DIR / "ni_long_profile_rates.png"
         fig.savefig(out, dpi=150, bbox_inches="tight")
         print("Saved: %s" % out)
     else:
@@ -458,6 +614,212 @@ def _print_summary(profiles: List[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Animation helpers
+# ---------------------------------------------------------------------------
+
+def _precompute_anim_data(nc_path: Path, bin_edges: np.ndarray) -> dict:
+    """
+    Read every column snapshot from *nc_path* and return per-snapshot
+    profiles binned in absolute-elevation space (m NAVD88).
+
+    Returns dict with keys:
+        snap_years      (n_snaps,)
+        loi             (n_snaps, n_bins)  LOI %
+        root_wt         (n_snaps, n_bins)  root wt%
+        labile_wt       (n_snaps, n_bins)  labile organic wt%
+        ref_wt          (n_snaps, n_bins)  refractory organic wt%
+        surf_elev       (n_snaps,)         surface elevation m NAVD88
+    """
+    bin_lo = bin_edges[:-1]
+    bin_hi = bin_edges[1:]
+    n_bins = len(bin_lo)
+
+    with nc4.Dataset(str(nc_path)) as ds:
+        mat_names = _decode_mat_names(ds["material_name"][:])
+        lab_i  = mat_names.index("labile_organic")
+        ref_i  = mat_names.index("refractory_organic")
+        root_i = mat_names.index("roots")
+
+        snap_t  = np.array(ds["snapshot_time_days"][:], dtype=np.float64)
+        n_snaps = len(snap_t)
+
+        loi_all    = np.full((n_snaps, n_bins), np.nan)
+        root_all   = np.full((n_snaps, n_bins), np.nan)
+        labile_all = np.full((n_snaps, n_bins), np.nan)
+        ref_all    = np.full((n_snaps, n_bins), np.nan)
+        surf_all   = np.full(n_snaps, np.nan)
+
+        for si in range(n_snaps):
+            n_lay = int(ds["snapshot_n_layers"][si])
+            if n_lay == 0:
+                continue
+            thick  = np.array(ds["layer_thickness"][si,    :n_lay], dtype=np.float64)
+            top_el = np.array(ds["layer_top_elevation"][si, :n_lay], dtype=np.float64)
+            mass   = np.array(ds["layer_mass"][si,          :n_lay, :], dtype=np.float64)
+
+            bot_el = top_el - thick
+            surf_all[si] = top_el.max()
+
+            # overlap[b, k] = fraction of layer k that falls in elevation bin b
+            overlap = np.maximum(0.0,
+                np.minimum(top_el[np.newaxis, :], bin_hi[:, np.newaxis]) -
+                np.maximum(bot_el[np.newaxis, :], bin_lo[:, np.newaxis])
+            )  # (n_bins, n_lay)
+            safe_thick = np.where(thick > 0, thick, np.inf)
+            frac = overlap / safe_thick[np.newaxis, :]  # (n_bins, n_lay)
+
+            bin_mass  = frac @ mass                                  # (n_bins, n_mats)
+            bin_total = bin_mass.sum(axis=1)                         # (n_bins,)
+            bin_thick = (frac * thick[np.newaxis, :]).sum(axis=1)    # (n_bins,)
+
+            valid = bin_thick > 1e-6
+            denom = np.where(bin_total > 1e-9, bin_total, np.nan)
+
+            organic = bin_mass[:, lab_i] + bin_mass[:, ref_i] + bin_mass[:, root_i]
+            loi_all[si]    = np.where(valid, organic              / denom * 100.0, np.nan)
+            root_all[si]   = np.where(valid, bin_mass[:, root_i]  / denom * 100.0, np.nan)
+            labile_all[si] = np.where(valid, bin_mass[:, lab_i]   / denom * 100.0, np.nan)
+            ref_all[si]    = np.where(valid, bin_mass[:, ref_i]   / denom * 100.0, np.nan)
+
+    return {
+        "snap_years": snap_t / 365.25,
+        "loi":        loi_all,
+        "root_wt":    root_all,
+        "labile_wt":  labile_all,
+        "ref_wt":     ref_all,
+        "surf_elev":  surf_all,
+    }
+
+
+def _make_animation(profiles: List[dict], results: Dict[float, Path], save: bool) -> None:
+    """
+    Animate the growing column for all SLR scenarios simultaneously.
+    Profiles are plotted in absolute elevation (m NAVD88) so the column
+    grows upward.  The y-axis is fixed to match the final-frame extent.
+    """
+    try:
+        import imageio.v3 as iio
+    except ImportError:
+        print("imageio required for animation: pip install imageio[pyav]")
+        return
+
+    base_elev = INITIAL_ELEV_M - 1.0    # bottom of initial sand column
+    max_surf  = max(p["surf_final"] for p in profiles)
+
+    # elevation bins: fixed across all frames
+    bin_edges  = np.arange(base_elev, max_surf + ANIM_BIN_M * 2, ANIM_BIN_M)
+    bin_centres = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+
+    print("Pre-computing snapshot profiles ...")
+    anim_data = []
+    for prof, col in zip(profiles, COLORS):
+        slr = prof["slr_m_yr"]
+        nc_path = OUTPUT_DIR / ("%s.nc" % _run_id(slr))
+        print("  SLR=%d mm/yr" % round(slr * 1000))
+        anim_data.append(_precompute_anim_data(nc_path, bin_edges))
+
+    # x-axis limits: max value across all scenarios and all snapshots
+    xlim_loi    = (0.0, max(np.nanmax(d["loi"])    for d in anim_data))
+    xlim_root   = (0.0, max(np.nanmax(d["root_wt"]) for d in anim_data))
+    xlim_labile = (0.0, max(np.nanmax(d["labile_wt"]) for d in anim_data))
+    xlim_ref    = (0.0, max(np.nanmax(d["ref_wt"])   for d in anim_data))
+    ylim = (base_elev - 0.02, max_surf + 0.05)
+
+    # synthetic year-0 data: initial sand column, all organics = 0
+    yr0_valid = (bin_centres >= base_elev) & (bin_centres < INITIAL_ELEV_M)
+    yr0_zeros = np.where(yr0_valid, 0.0, np.nan)
+
+    # frame target years
+    frame_years = np.arange(0, RUN_YEARS + ANIM_STEP_YR, ANIM_STEP_YR)
+
+    # --- set up figure (created once, updated in place) ---
+    matplotlib.use("Agg")
+    fig, axes = plt.subplots(1, 4, figsize=(18, 8))
+    ax_loi, ax_root, ax_lab, ax_ref = axes
+
+    panel_info = [
+        (ax_loi,  "LOI (%)",           xlim_loi,    "loi"),
+        (ax_root, "Live root wt%",     xlim_root,   "root_wt"),
+        (ax_lab,  "Labile organic wt%", xlim_labile, "labile_wt"),
+        (ax_ref,  "Refractory org wt%", xlim_ref,   "ref_wt"),
+    ]
+
+    # MHW reference line on every panel
+    for ax, xlabel, xlim, key in panel_info:
+        ax.axhline(INITIAL_ELEV_M, color="grey", lw=0.7, ls="--", alpha=0.5,
+                   label="Initial surface (MHW)")
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_xlabel(xlabel, fontsize=10)
+        ax.set_ylabel("Elevation (m NAVD88)", fontsize=10)
+        ax.grid(True, lw=0.3, alpha=0.4)
+        ax.tick_params(labelsize=9)
+
+    ax_loi.set_title("Loss on ignition",        fontsize=10)
+    ax_root.set_title("Live root wt%",           fontsize=10)
+    ax_lab.set_title("Labile organic wt%",       fontsize=10)
+    ax_ref.set_title("Refractory organic wt%",   fontsize=10)
+
+    # create line objects for each scenario × panel
+    lines = {}   # (scenario_idx, key) -> Line2D
+    for si, (prof, col) in enumerate(zip(profiles, COLORS)):
+        mm    = round(prof["slr_m_yr"] * 1000)
+        label = "SLR %d mm/yr" % mm
+        for ax, xlabel, xlim, key in panel_info:
+            ln, = ax.plot([], [], color=col, lw=1.6, label=label)
+            lines[(si, key)] = ln
+
+    ax_loi.legend(fontsize=8, loc="upper right")
+
+    title = fig.suptitle("Year 0", fontsize=11)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+    fig.canvas.draw()
+
+    def _get_frame_arrays(target_yr: float):
+        """Return {key: (x_arr, y_arr)} for each scenario at target_yr."""
+        result = []
+        for si, d in enumerate(anim_data):
+            if target_yr <= 0:
+                row = {k: yr0_zeros for k in ("loi", "root_wt", "labile_wt", "ref_wt")}
+            else:
+                snap_idx = int(np.argmin(np.abs(d["snap_years"] - target_yr)))
+                row = {k: d[k][snap_idx] for k in ("loi", "root_wt", "labile_wt", "ref_wt")}
+            result.append(row)
+        return result
+
+    print("Rendering %d frames at %d fps ..." % (len(frame_years), ANIM_FPS))
+    frames_rgba = []
+    for target_yr in frame_years:
+        frame_data = _get_frame_arrays(target_yr)
+        for si in range(len(anim_data)):
+            for ax, xlabel, xlim, key in panel_info:
+                vals = frame_data[si][key]
+                mask = ~np.isnan(vals)
+                ln   = lines[(si, key)]
+                ln.set_data(vals[mask], bin_centres[mask])
+
+        title.set_text("Year %d" % int(round(target_yr)))
+        fig.canvas.draw()
+        buf = fig.canvas.buffer_rgba()
+        rgba = np.frombuffer(buf, dtype=np.uint8).reshape(
+            fig.canvas.get_width_height()[::-1] + (4,)
+        )
+        frames_rgba.append(rgba[:, :, :3].copy())   # RGB only
+
+    plt.close(fig)
+
+    if save:
+        FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+        out_mp4 = FIGURE_DIR / "ni_long_profile_anim.mp4"
+        iio.imwrite(str(out_mp4), frames_rgba, fps=ANIM_FPS, codec="libx264")
+        print("Saved: %s  (%d frames, %d fps)" % (out_mp4, len(frames_rgba), ANIM_FPS))
+    else:
+        # show as interactive HTML in fallback
+        print("(--no-save: animation not written to disk)")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -471,6 +833,8 @@ def _parse_args() -> argparse.Namespace:
     g.add_argument("--plot-only", action="store_true")
     g.add_argument("--force",     action="store_true")
     p.add_argument("--no-save",   action="store_true")
+    p.add_argument("--animate",   action="store_true",
+                   help="Generate growing-column animation (ni_long_profile_anim.mp4)")
     return p.parse_args()
 
 
@@ -506,8 +870,13 @@ def main() -> None:
         return
 
     _print_summary(profiles)
-    print("Plotting ...")
-    _plot(profiles, save=not args.no_save)
+
+    if args.animate:
+        _make_animation(profiles, results, save=not args.no_save)
+    else:
+        print("Plotting ...")
+        _plot(profiles, save=not args.no_save)
+        _plot_rates(profiles, save=not args.no_save)
 
 
 if __name__ == "__main__":
