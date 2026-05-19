@@ -1,119 +1,153 @@
 # marsh_muddpile
 
-`marsh_muddpile` is a modular C++ marsh stratigraphy model for simulating the evolution of subsurface sediment layers in tidal marshes.
+`marsh_muddpile` is a modular 1-D tidal-marsh sediment-column model written in C++17.
+It simulates the vertical evolution of a sediment column in a tidal marsh: mineral
+deposition, plant biomass, root emplacement, organic-matter decay, porewater chemistry
+(NH₄⁺, SO₄²⁻, CH₄), and compaction — all driven by tidal water levels and climate
+forcing read from a YAML configuration file.
 
-This code is an update and redesign of the **Mudd et al. (2009, Estuarine, Coastal and Shelf Science)** marsh model framework. The aim of this new version is to make the model:
-
-- more modular
-- easier to extend
-- faster
-- better suited to parameter exploration and future inversion workflows
-
-The long-term goal is to support both:
-
-- **forward modelling**, where marsh evolution is simulated under prescribed forcing and parameter scenarios
-- **inversion / calibration**, where measured marsh profiles are used to constrain uncertain model parameters
-
-## Current model components
-
-The code currently includes modular implementations of:
-
-- **surface deposition**
-  - TKE-based tidal settling and trapping
-- **biomass**
-  - seasonal aboveground and belowground biomass
-- **root allocation**
-  - exponential emplacement of roots through the sediment column
-- **decay**
-  - first-order decay of materials with depth and temperature effects
-- **porewater chemistry**
-  - per-layer ammonium (NH4+) driven by decomposition, tidal flushing, diffusion, and root uptake
-- **compaction**
-  - a two-stage compaction model motivated by **Brain et al. (2012)**
-- **material catalog**
-  - support for multiple particle / material types
-- **YAML-based configuration**
-  - materials, parameters, forcing, and initial state can be loaded from a config file
-
-## Why this code exists
-
-The original marsh model design was scientifically useful, but much of the logic was held in monolithic driver code and tightly coupled classes. This new version is intended to modernise that structure by:
-
-- moving process logic into explicit modules
-- storing state in array-based form using **Eigen**
-- allowing process selection from configuration files
-- making the forward model kernel reusable for future inversion workflows
-- preparing the codebase for performance improvements, including OpenMP
-
-## Scientific scope
-
-The model tracks a 1D vertical sediment column in a marsh and can represent:
-
-- mineral sediment
-- labile organic matter
-- refractory organic matter
-- live roots
-- isotopes and tracers, where configured
-- per-layer porewater ammonium (NH4+) concentrations
-
-Each timestep can include:
-
-- mineral deposition to the surface
-- plant biomass production
-- belowground root emplacement
-- organic matter decay
-- porewater NH4 cycling (production, tidal flushing, diffusion, root uptake)
-- compaction and porosity evolution
-
-## Current status
-
-This is an active redevelopment codebase. The architecture is now in place for modular forward modelling, but the code should still be treated as a research model under development.
-
-In particular:
-
-- some parameter values in example configurations are placeholders
-- model calibration is still an ongoing task
-- inversion support is planned for a later design phase
+The code is an update and redesign of the **Mudd et al. (2009, ECSS)** marsh model
+framework, recast as a fully modular architecture where every process is an
+interchangeable plug-in.
 
 ---
 
-# Requirements
+## Current model components
 
-## Core dependencies
+Each step in the per-timestep loop selects one named implementation from the
+list below; implementations marked *(default)* are the recommended starting point.
 
-The code currently depends on:
+### Water level
+| Name | Description |
+|------|-------------|
+| `composite_water_level` *(default)* | Harmonic reconstruction from up to 11 tidal constituents (M2, S2, N2, K1, O1, P1, K2, Q1, 2N2, M4, MS4) with nodal factors; falls back to a single-sine wave if constituents are absent |
 
-- **C++17**
-- **CMake** >= 3.16
-- **Eigen3**
-- **yaml-cpp**
+### Evapotranspiration
+| Name | Description |
+|------|-------------|
+| `simple_canopy_et` *(default)* | Penman-Monteith-style ET scaled by LAI and limited by available water |
 
-Optional:
+### Salinity
+| Name | Description |
+|------|-------------|
+| `distance_flushing_salinity` *(default)* | Relaxes root-zone salinity toward creek salinity; rate decays exponentially with distance from creek; ODE solved exactly per step |
 
-- **OpenMP** for parallel speedup in selected components
+### Vegetation / GPP / biomass
+| Name | Description |
+|------|-------------|
+| `marsh_gpp_biomass` *(default)* | Light-use efficiency GPP model (Monteith 1972) with five stress scalars (temperature, hydroperiod, salinity, inundation range, low-inundation desiccation); exact ODE solution for both biomass pools; dynamic belowground capacity tied to root:shoot ratio |
+| `seasonal_biomass` | Simple seasonal biomass cycle without GPP |
+| `null_biomass` | No vegetation |
 
-## Ubuntu / Debian installation
+### Root allocation
+| Name | Description |
+|------|-------------|
+| `exponential_root_allocation` *(default)* | Distributes live roots and mortality fluxes through the column via an exponential depth profile |
+| `null_root_allocation` | No root input to column |
 
-Install the required packages with:
+### Deposition
+| Name | Description |
+|------|-------------|
+| `edge_distance_deposition` *(default)* | SSC decays exponentially inland from the creek edge; inundation computed analytically per tidal cycle to capture spring-neap variation |
+| `tke_deposition` | TKE-based settling and vegetation trapping |
+| `zero_deposition` | No mineral deposition |
+
+### Organic-matter decay
+| Name | Description |
+|------|-------------|
+| `marsh_decay` *(default)* | First-order decay with depth attenuation, temperature sensitivity, and a hydrology–salinity modifier that correctly scales the rate (not the survival fraction) |
+| `first_order_decay` | Simpler first-order decay without modifier |
+| `identity_decay` | No decay |
+
+### Porewater chemistry — NH₄⁺ (optional)
+| Name | Description |
+|------|-------------|
+| `nh4_porewater` | Per-layer NH₄⁺: production from decomposition, tidal flushing, Fickian diffusion, Michaelis-Menten root uptake |
+| `none` *(default)* | Disabled |
+
+Enable with `porewater_chemistry_model_name: nh4_porewater` in the `simulation` block.
+
+### Methane / sulfate (optional)
+| Name | Description |
+|------|-------------|
+| `sulfate_methane` | SO₄²⁻–CH₄ Michaelis-Menten competition, tidal SO₄ replenishment, Fickian diffusion, CH₄ oxidation, ebullition, and plant-mediated (aerenchyma) transport; outputs surface CH₄ flux (µmol m⁻² s⁻¹) |
+| `none` *(default)* | Disabled |
+
+Enable with `methane_model_name: sulfate_methane` in the `simulation` block.
+
+### Compaction
+| Name | Description |
+|------|-------------|
+| `mixing_compaction` *(default)* | Depth-dependent Morris et al. (2016) mixing model; DBD = 1 / (LOI/k₁(d) + (1−LOI)/k₂(d)); end-member polynomials calibrated to 85,122 CCN synthesis layers |
+| `two_stage_compaction` | Brain et al. (2012) stress-based model (retained for comparison; over-compacts by 2–3× relative to CCN data) |
+| `identity_compaction` | No compaction |
+
+---
+
+## Current status
+
+The forward model is calibrated and actively used for research.  Calibration
+targets include the North Inlet LTER site (South Carolina, US-HB1 AmeriFlux
+tower) with SET accretion records from the GI control plots (1996–2025) and
+biomass–elevation data from Morris et al. (2013, *Oceanography*).
+
+Extension sites (PIE/GCE/VCR LTER) are documented in `lter_data/README.md`.
+Sensitivity scripts are in `sensitivity/`; calibration helper code is in
+`calibration/`.  Output is NetCDF; Python scripts for post-processing and
+visualisation are in `scripts/` and `viz/`.
+
+Porewater CH₄ outputs are calibrated against edi.1828.3 (North Inlet CH₄ flux
+chamber data).  Porewater NH₄⁺ outputs are compared against edi.136.11
+(North Inlet porewater profiles).
+
+---
+
+## Requirements
+
+### Core dependencies
+
+| Dependency | Version | Purpose |
+|------------|---------|---------|
+| C++17 compiler | — | Required language standard |
+| CMake | ≥ 3.16 | Build system |
+| Eigen3 | any 3.x | Dense linear algebra (mass matrix) |
+| yaml-cpp | any | YAML configuration loading |
+| NetCDF-C | any | NetCDF output (via pkg-config) |
+| NetCDF-C++4 | any | C++ NetCDF API |
+
+Optional: **OpenMP** for parallel speedup in the decay, compaction, and
+deposition inner loops (controlled by `-Dmarsh_muddpile_use_openmp=ON/OFF`).
+
+---
+
+## Installing dependencies
+
+### Ubuntu / Debian
 
 ```bash
 sudo apt-get update
-sudo apt-get install build-essential cmake libeigen3-dev libyaml-cpp-dev
+sudo apt-get install \
+    build-essential \
+    cmake \
+    libeigen3-dev \
+    libyaml-cpp-dev \
+    libnetcdf-dev \
+    libnetcdf-c++4-dev \
+    pkg-config
 ```
 
-If you want OpenMP support, a standard GCC toolchain is usually sufficient, but installing `g++` explicitly is also fine:
+OpenMP is included in standard GCC; no extra package is needed.
+
+To verify NetCDF is visible to pkg-config after installation:
 
 ```bash
-sudo apt-get install g++
+pkg-config --modversion netcdf
+pkg-config --modversion netcdf-cxx4
 ```
 
-## Installing in a conda environment
+### conda / mamba (no root access, or for isolated environments)
 
-If you do not have root access, or prefer to keep dependencies isolated, all required libraries are available through [conda-forge](https://conda-forge.org/).
-
-### Required conda packages
-
-Install everything into your environment with:
+All required libraries are available from [conda-forge](https://conda-forge.org/):
 
 ```bash
 mamba install -c conda-forge cmake eigen yaml-cpp libnetcdf netcdf-cxx4 compilers
@@ -125,26 +159,17 @@ Or with plain conda:
 conda install -c conda-forge cmake eigen yaml-cpp libnetcdf netcdf-cxx4 compilers
 ```
 
-The `compilers` metapackage provides a GCC C++ compiler pinned to the conda-forge toolchain. If your system compiler is already C++17-capable you can omit it.
+The `compilers` metapackage provides a GCC C++ compiler pinned to the
+conda-forge toolchain.  If your system compiler is already C++17-capable you
+can omit it.
 
-### Setting the pkg-config path
-
-CMake locates NetCDF via `pkg-config`. After activating your environment you need to make sure `pkg-config` can find the conda-installed `.pc` files:
+After activating the environment, expose the conda pkg-config files:
 
 ```bash
 export PKG_CONFIG_PATH=$CONDA_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
 
-To make this permanent, add that line to your `~/.bashrc` (or whichever shell init file your cluster uses). You can verify it is working with:
-
-```bash
-pkg-config --modversion netcdf
-pkg-config --modversion netcdf-cxx4
-```
-
-### Building with conda dependencies
-
-Pass `CMAKE_PREFIX_PATH` so that CMake searches the active conda environment for all packages:
+Add this line to `~/.bashrc` to make it permanent, then build with:
 
 ```bash
 mkdir -p build && cd build
@@ -154,9 +179,7 @@ cmake --build . -j
 
 ---
 
-# Building the code
-
-From the project root:
+## Building
 
 ```bash
 mkdir -p build
@@ -165,84 +188,49 @@ cmake ..
 cmake --build . -j
 ```
 
-This should build:
+CMake reports which dependencies were found:
 
-- the library target
-- the command-line executable `marsh_cli`
-
-## OpenMP
-
-OpenMP detection is controlled in `CMakeLists.txt`.
-
-By default, OpenMP support is enabled if available.
-
-To configure normally:
-
-```bash
-cmake ..
+```
+-- C++17 compiler support: found
+-- Eigen3 found: 3.4.0
+-- yaml-cpp found: 0.7.0
+-- NetCDF C found: 4.9.2
+-- NetCDF C++4 found: 4.3.1
+-- OpenMP found
 ```
 
-To disable OpenMP explicitly:
+### Build options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `marsh_muddpile_use_openmp` | `ON` | Enable OpenMP (inner-loop parallelism in decay, compaction, deposition) |
+| `CMAKE_BUILD_TYPE` | `Release` | Set to `Debug` for assertions and debug symbols |
+
+Example — disable OpenMP:
 
 ```bash
 cmake -Dmarsh_muddpile_use_openmp=OFF ..
 ```
 
-During configuration, CMake should report whether it found:
-
-- a C++17 compiler
-- Eigen3
-- yaml-cpp
-- OpenMP
-
 ---
 
-# Running the model
-
-## Basic usage
-
-The model is run from the command line with a YAML configuration file.
-
-From the build directory:
+## Running
 
 ```bash
-./marsh_cli ../example_run.yaml
+# from the build directory
+./marsh_cli ../example_runs/run_edge_distance_50yr.yaml
 ```
 
-Or with another config file:
+### CLI options
 
-```bash
-./marsh_cli ../path/to/your_run.yaml
-```
-
-If no filename is supplied, the CLI defaults to `example_run.yaml`.
-
-## CLI options
-
-| Option | Description |
-|--------|-------------|
-| `<config.yaml>` | Path to the YAML run configuration (default: `example_run.yaml`) |
-| `--silent` | Suppress all stdout output; errors still go to stderr |
-
-The `--silent` flag can appear before or after the config file:
-
-```bash
-./marsh_cli ../example_run.yaml --silent
-./marsh_cli --silent ../example_run.yaml
-```
-
-## What the CLI prints
-
-On a normal run the CLI prints:
-
-1. the config file being loaded
-2. the total model duration (years and days)
-3. a progress line every ~3 months of model time, showing current and total time in years
-4. the path of the written NetCDF output file
+| Argument | Description |
+|----------|-------------|
+| `<config.yaml>` | Path to YAML run file (default: `example_run.yaml`) |
+| `--silent` | Suppress stdout progress output; errors still go to stderr |
 
 Example output:
 
-```text
+```
 loading config: ../example_runs/run_edge_distance_50yr.yaml
 total run duration: 50.0 yr (18262.5 days)
   0.25 yr / 50.0 yr
@@ -251,432 +239,287 @@ total run duration: 50.0 yr (18262.5 days)
 wrote netcdf output: results/run_edge_distance_50yr.nc
 ```
 
-Use `--silent` to suppress all of the above (useful when running ensembles or calling from scripts).
-
 ---
 
-# YAML configuration
+## YAML configuration
 
-The model is configured through a YAML file.
-
-A typical run file contains:
-
-- `simulation`
-- `parameters`
-- `materials`
-- `forcing`
-- `initial_state`
-
-## Example structure
+A minimal YAML run file contains these top-level keys:
 
 ```yaml
 simulation:
-  start_year: 0
-  end_year: 1
-  dt_days: 30.0
+  water_level_model_name:         "composite_water_level"
+  evapotranspiration_model_name:  "simple_canopy_et"
+  salinity_model_name:            "distance_flushing_salinity"
+  vegetation_model_name:          "marsh_gpp_biomass"
+  root_allocation_model_name:     "exponential_root_allocation"
+  deposition_model_name:          "edge_distance_deposition"
+  decay_model_name:               "marsh_decay"
+  compaction_model_name:          "mixing_compaction"
+  porewater_chemistry_model_name: "none"   # or "nh4_porewater"
+  methane_model_name:             "none"   # or "sulfate_methane"
+  dt_days: 30.4375                         # outer forcing timestep
 
-  deposition_model_name: tke_deposition
-  biomass_model_name: seasonal_biomass
-  root_allocation_model_name: exponential_root_allocation
-  decay_model_name: first_order_decay
-  compaction_model_name: two_stage_compaction
-  porewater_chemistry_model_name: nh4_porewater  # optional; omit or set "none" to disable
+site:
+  distance_from_creek_m:    10.0
+  creek_bank_elevation_m:    0.0
+  local_tidal_offset_m:      0.0
 
 parameters:
-  water_density_kg_m3: 1000.0
-  gravity_m_s2: 9.81
+  # tidal constituents
+  M2_amplitude_m:    0.766
+  M2_phase_deg:      0.0
+  tidal_period_hours: 12.42
+  # vegetation (S. alterniflora defaults)
+  vegetation_lue_gC_per_umol:              1.6e-6
+  vegetation_aboveground_capacity_kg_m2:   0.95
+  vegetation_root_shoot_ratio:             2.0
+  # deposition
+  deposition_distance_from_edge_m:  10.0
+  deposition_basin_length_m:        50.0
 
 materials:
   - name: silt
     category: mineral
-    density: 2600.0
+    density: 2650.0
     allow_surface_deposition: true
-    settling:
-      diameter: 2.0e-5
-      settling_velocity: 3.7e-5
+    settling: { diameter: 2.0e-5, settling_velocity: 3.7e-5 }
+  - name: labile_organic
+    category: organic_labile
+    density: 1200.0
+    decay: { k_0: 0.01, gamma: 0.10 }
+  - name: refractory_organic
+    category: organic_refractory
+    density: 1400.0
+    decay: { k_0: 0.0, gamma: 2.0 }
+  - name: roots
+    category: live_root
+    density: 1100.0
 
 forcing:
-  steps:
-    - model_time_days: 30.0
-      dt_days: 30.0
-      mean_sea_level: 0.0
-      mean_high_tide: 0.5
-      tidal_amplitude: 0.5
-      tidal_period_hours: 12.4
-      temperature: 20.0
-      suspended_sediment_concentration: 0.02
+  generated:
+    n_steps: 600                        # 50 years × 12 months
+    dt_days: 30.4375
+    start_time_days: 0.0
+    initial_mean_sea_level: 0.0
+    sea_level_rise_rate_m_per_yr: 0.003
+    temperature_mean_c:       18.92
+    temperature_amplitude_c:   8.46
+    temperature_peak_day:    202.8
+    par_mean_umol_m2_d:      34172288.0
+    par_amplitude_umol_m2_d: 14160082.0
+    par_peak_day:            164.8
+    tidal_amplitude:         0.766
+    tidal_period_hours:      12.42
+    creek_salinity_ppt:      28.0
+    suspended_sediment_concentration: 0.020
+    fine_sediment_concentration:      0.005
 
 initial_state:
   layers:
-    - thickness_m: 0.10
-      porosity: 0.70
-      top_elevation_m: 0.10
-      age_days: 0.0
-      mass_kg_m2:
-        silt: 20.0
+    - top_elevation_m: 0.30
+      thickness_m:     0.50
+      porosity:        0.60
+      age_days:        0.0
+      fill_material:   silt
+
+initial_ecohydrology_state:
+  aboveground_biomass_kg_m2: 0.5
+  belowground_biomass_kg_m2: 1.5
+  root_zone_salinity_ppt:   28.0
+  lai: 1.5
+  litter_kg_m2: 0.0
+
+output:
+  file: output.nc
+  write_time_series: true
+  write_column_snapshots: true
+  snapshot_times_days: [18262.5]    # end of 50-year run
 ```
+
+### Forcing options
+
+Three mutually exclusive ways to specify forcing:
+
+| Key | Use case |
+|-----|---------|
+| `forcing.steps:` | Explicit list of steps — ERA5-driven or short test runs |
+| `forcing.constant:` | Fixed climate, no SLR or seasonal cycle |
+| `forcing.generated:` | Synthetic seasonal cycle with optional linear SLR and warming trends (preferred for long runs) |
+
+See `example_runs/` for working examples of each format.
 
 ---
 
-# Timestepping
+## Python calibration and sensitivity layer
 
-The model operates on two distinct temporal scales that must be configured
-independently.
+The Python code in `calibration/` and `sensitivity/` does **not** call C++
+directly.  It writes YAML input files and runs `marsh_cli` as a subprocess,
+then reads the NetCDF output.
 
-## Outer forcing timestep
-
-The `dt_days` field in each entry of `forcing.steps` sets the duration of one
-forcing step — how often temperature, PAR, suspended sediment concentration,
-salinity, and tidal statistics are updated.  Typical choices range from one day
-(capturing synoptic weather variation) to one month (sufficient for long
-equilibrium runs).
-
-A forcing step does not need to equal the tidal period.  Processes that require
-sub-step tidal integration handle that internally (see below).
-
-## Inner hydrological substeps
-
-Within each forcing step, the `composite_water_level_model` evaluates water
-level at `water_level_substeps_per_step` evenly-spaced time points and counts
-what fraction are above the marsh surface.  This `inundation_fraction` (and the
-derived mean water depth and inundation duration) is then used by the
-**GPP, salinity, and ET models**.
-
-The key constraint is the number of substeps per tidal cycle:
-
-```
-substeps_per_tidal_cycle ≈ water_level_substeps_per_step
-                            × tidal_period_hours / (24 × dt_days)
-```
-
-For a high-marsh site that is inundated for only 15–25 % of each tidal cycle,
-at least **~20 substeps per tidal cycle** are recommended to estimate the
-inundation fraction accurately.  With only 4 substeps per cycle the estimated
-fraction is coarsely quantised (0 %, 25 %, 50 %, …) and can introduce
-significant bias in GPP and salinity.
-
-For a monthly forcing step (dt_days ≈ 30.4) this requires roughly
-`water_level_substeps_per_step ≈ 20 × 30.4 × 24 / 12.42 ≈ 1175`.
-The historic default of 240 corresponds to ~4 substeps per cycle and
-is too coarse for high-marsh simulations.
-
-## Deposition model: independent per-cycle integration
-
-The `edge_distance_deposition` model does **not** use
-`water_level_substeps_per_step`.  Instead, it:
-
-1. Loops over every individual tidal cycle within the forcing step
-   (`n_cycles = round(24 × dt_days / tidal_period_hours)`).
-2. Samples 60 points within each cycle to find the cycle's min and max
-   water level (the *cycle envelope*).
-3. Computes the inundation fraction for that cycle analytically using the
-   exact arcsine formula for a sinusoidal tide:
-
-   ```
-   f = 0.5 − arcsin((z − mean) / amplitude) / π
-   ```
-
-This is exact regardless of how coarse the outer forcing step is, and correctly
-handles high-marsh sites that are barely inundated.  The `water_level_substeps_per_step`
-parameter has no effect on deposition computed by this model.
-
-## Parameter summary
-
-| Parameter | Where set | Effect |
-|-----------|-----------|--------|
-| `dt_days` in `forcing.steps` | forcing YAML | Duration of each forcing step; controls how often climate/tidal statistics update |
-| `water_level_substeps_per_step` | `parameters` block | Number of time samples within each forcing step used by the water level model to compute inundation fraction for GPP, salinity, ET |
-
-## Rule of thumb
-
-For a mid-marsh site (~20 % inundation fraction per tide), target at least
-20 substeps per tidal cycle.  Scale `water_level_substeps_per_step`
-proportionally with `dt_days`:
-
-```
-water_level_substeps_per_step ≈ 20 × dt_days × 24 / tidal_period_hours
-```
-
-For a semidiurnal (12.42 h) site:
-
-| dt_days | Recommended substeps |
-|---------|----------------------|
-| 1       | 39                   |
-| 7       | 271                  |
-| 30.4    | 1175                 |
-| 91.3    | 3526                 |
-
-The sensitivity scripts in `sensitivity/` quantify the effect of both
-parameters on a 50-year simulation.
+| File | Purpose |
+|------|---------|
+| `calibration/site_config.py` | `PlotConfig` dataclass (site, met, tidal parameters); `north_inlet_default_tides()` |
+| `calibration/yaml_writer.py` | Canonical parameter defaults (`_DEFAULT_PARAMETERS`, `_DEFAULT_MATERIALS`); writes complete YAML from a `PlotConfig` |
+| `calibration/forcing_builder.py` | Builds monthly forcing steps with sinusoidal temperature and PAR |
+| `calibration/model_runner.py` | `run_model()` subprocess wrapper |
+| `sensitivity/*.py` | Factorial parameter sweeps; outputs go to `sensitivity/runs/`, figures to `sensitivity/figures/` |
 
 ---
 
-# Available process models
+## Model state
 
-The code currently supports the following model names.
+The sediment column (`column_state`) stores:
 
-## Deposition
-
-- `zero_deposition`
-- `tke_deposition`
-
-## Biomass
-
-- `null_biomass`
-- `seasonal_biomass`
-
-## Root allocation
-
-- `null_root_allocation`
-- `exponential_root_allocation`
-
-## Decay
-
-- `identity_decay`
-- `first_order_decay`
-- `marsh_decay`
-
-## Porewater chemistry
-
-- `none` (default — no porewater chemistry computed)
-- `nh4_porewater` — per-layer NH4+ driven by organic matter decomposition
-
-Enable with `porewater_chemistry_model_name: nh4_porewater` in the `simulation` block.
-The NH4 model outputs `surface_nh4_umol_L` to the time-series and `layer_porewater_nh4`
-to column snapshots.
-
-## Compaction
-
-- `identity_compaction`
-- `two_stage_compaction`
-
-These are selected using the `*_model_name` fields in the `simulation` section of the YAML file.
-
----
-
-# Model design
-
-## State representation
-
-The marsh column is represented using array-based state storage:
-
-- layer-by-material mass matrix
-- layer thickness
+- layer-by-material mass matrix (kg m⁻²)
+- layer thickness (m)
 - layer porosity
-- layer top elevation
-- layer age
-- per-layer porewater NH4 concentration (μmol L⁻¹)
+- layer top elevation (m, relative to MSL)
+- layer age (days)
+- per-layer porewater NH₄⁺ (µmol L⁻¹)
+- per-layer porewater SO₄²⁻ (µmol L⁻¹)
+- per-layer porewater CH₄ (µmol L⁻¹)
 
-This structure is designed for:
+Layers are ordered **deepest first** (index 0 = oldest).
 
-- simpler process coupling
-- better numerical transparency
-- better memory locality than object-heavy per-particle designs
-
-## Materials
-
-Material definitions are stored in a `material_catalog`.
-
-A material can include properties such as:
-
-- density
-- settling properties
-- decay properties
-- category
-- flags for root input or surface deposition
-
-This allows the same forward model to work with different sediment and tracer mixtures.
+The ecohydrology state (`ecohydrology_state`) stores aboveground and belowground
+biomass (kg m⁻²), LAI, root-zone salinity (ppt), and litter (kg m⁻²).
 
 ---
 
-# Compaction model
+## NetCDF output
 
-The current compaction module is a two-stage formulation motivated by:
+### Time-series variables (dimension: `time`)
+`model_time_days`, `aboveground_biomass_kg_m2`, `belowground_biomass_kg_m2`,
+`gpp_gC_m2_d`, `npp_gC_m2_d`, `aboveground_mortality_kg_m2_d`,
+`belowground_mortality_kg_m2_d`, `root_zone_salinity_ppt`, `lai`,
+`inundation_fraction`, `mean_water_level_m`, `surface_nh4_umol_L`,
+`surface_ch4_flux_umol_m2_s`, `surface_so4_umol_L`,
+`total_mass_by_material(time, material)`.
 
-- **Brain et al. (2012)**
+### Column snapshot variables (dimensions: `snapshot`, `layer`)
+`layer_mass(snapshot, layer, material)`, `layer_top_elevation`,
+`layer_thickness`, `layer_age`, `layer_porewater_nh4`,
+`layer_porewater_so4`, `layer_porewater_ch4`.
 
-It uses:
-
-- a reference void ratio
-- a recompression index
-- a virgin compression index
-- a yield stress
-
-The current implementation also includes hooks to let compression properties depend on:
-
-- organic content, estimated from loss on ignition
-- grain size
-
-This makes it more flexible than the older single-stage compaction treatment.
+Layer 0 in a snapshot is the **deepest** (oldest) layer; the surface layer is
+at index `snapshot_n_layers − 1`.
 
 ---
 
-# Relationship to the older marsh model
+## Project layout
 
-This code is intended as a modern update to the **Mudd et al. (2009, ECSS)** marsh model family.
-
-The scientific ideas retained from that modelling tradition include:
-
-- marsh elevation control on biomass
-- seasonal biomass and mortality
-- root emplacement into the sediment column
-- marsh surface deposition linked to hydrodynamics and vegetation
-- organic matter decay
-- vertical sediment-column evolution
-
-The main changes in this new code are architectural:
-
-- modular process interfaces
-- YAML-based setup
-- array-based state storage
-- support for multiple interchangeable process implementations
-- preparation for faster forward ensembles and future inversion
-
----
-
-# Development goals
-
-Near-term goals include:
-
-- validating the forward model against expected behaviour
-- improving runtime diagnostics and output writing
-- adding result export
-- strengthening runtime checks
-- improving performance in hotspots
-
-Longer-term goals include:
-
-- inversion and calibration against measured marsh profiles
-- MPI-based or ensemble-scale workflow support
-- richer observation operators
-- more alternative process modules
-
----
-
-# Project layout
-
-A simplified project structure is:
-
-```text
-apps/
-  marsh_cli.cpp
-
-include/marsh_model/
-  core/
-  engine/
-  io/
-  processes/
-
-src/
-  core/
-  engine/
-  io/
-  processes/
+```
+marsh_muddpile/
+├── CMakeLists.txt
+├── apps/
+│   └── marsh_cli.cpp          # command-line entry point
+├── include/marsh_model/
+│   ├── core/                  # data structures (headers only)
+│   ├── engine/                # simulator, process factory, layer merger
+│   ├── io/                    # config and result I/O headers
+│   └── processes/             # abstract base classes + concrete headers
+├── src/
+│   ├── core/
+│   ├── engine/
+│   ├── io/
+│   └── processes/             # one .cpp per process implementation
+├── calibration/               # Python helpers for YAML generation and running
+├── sensitivity/               # Python sensitivity-analysis scripts
+├── scripts/                   # data-processing utilities
+├── example_runs/              # working YAML configs
+├── docs/
+│   ├── marsh_muddpile_architecture.md   # developer reference
+│   └── marsh_muddpile_model.tex         # governing equations (LaTeX)
+└── lter_data/                 # calibration data (LTER, AmeriFlux)
 ```
 
-## Key parts
-
-- `core/`
-  - state, materials, forcing, parameters, results
-- `processes/`
-  - deposition, biomass, roots, decay, compaction
-- `engine/`
-  - simulator and process factory
-- `io/`
-  - YAML configuration loading
-- `apps/`
-  - command-line interface
-
 ---
 
-# Example workflow
+## Troubleshooting
 
-## 1. Build
+### NetCDF not found
 
+Ubuntu/Debian:
 ```bash
-mkdir -p build
-cd build
-cmake ..
-cmake --build . -j
+sudo apt-get install libnetcdf-dev libnetcdf-c++4-dev pkg-config
 ```
 
-## 2. Run example config
-
+Conda:
 ```bash
-./marsh_cli ../example_runs/run_edge_distance_50yr.yaml
+mamba install -c conda-forge libnetcdf netcdf-cxx4
+export PKG_CONFIG_PATH=$CONDA_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
 
-## 3. Check screen output
-
-The CLI prints the total run duration, then a progress line every ~3 months of
-model time, and finally the path of the written NetCDF output file.
-All results (time series, final state, material totals) are in the NetCDF file.
-
----
-
-# Troubleshooting
-
-## yaml-cpp not found
-
-Install:
+### yaml-cpp not found
 
 ```bash
 sudo apt-get install libyaml-cpp-dev
 ```
 
-## Eigen3 not found
-
-Install:
+### Eigen3 not found
 
 ```bash
 sudo apt-get install libeigen3-dev
 ```
 
-## Compiler does not support C++17
-
-Install a newer compiler, for example:
+### Compiler does not support C++17
 
 ```bash
-sudo apt-get install g++
+sudo apt-get install g++   # GCC ≥ 7 is sufficient
 ```
 
-and rerun CMake.
+### CMake cannot find NetCDF after conda install
 
-## OpenMP not found
-
-This is not fatal unless you specifically require OpenMP. The code will still build without it if CMake is configured to allow that.
+Pass `CMAKE_PREFIX_PATH` explicitly:
+```bash
+cmake .. -DCMAKE_PREFIX_PATH=$CONDA_PREFIX
+```
 
 ---
 
-# Licence
+## Licence
 
-This project is released under the **GNU General Public Licence v3 (GPL-3.0)**.
-
+Released under the **GNU General Public Licence v3 (GPL-3.0)**.
 See the `LICENSE` file for details.
 
 ---
 
-# Citation and acknowledgements
+## Citation and acknowledgements
 
-This code is an update and redesign of the marsh modelling framework associated with:
+If you use this model please cite the original framework paper and the
+relevant process-model papers for the components you use:
 
-- Mudd, S.M., Howell, S.M., Morris, J.T., 2009. Impact of dynamic feedbacks between sedimentation, sea-level rise, and biomass production on near-surface marsh stratigraphy and carbon accumulation. Estuarine, Coastal and Shelf Science 82, 377–389. https://doi.org/10.1016/j.ecss.2009.01.028
+**Framework**
 
-This model evolved with a more complex particle settling component build on the basis of
+- Mudd, S.M., Howell, S.M., Morris, J.T., 2009. Impact of dynamic feedbacks
+  between sedimentation, sea-level rise, and biomass production on near-surface
+  marsh stratigraphy and carbon accumulation. *Estuarine, Coastal and Shelf
+  Science* 82, 377–389. https://doi.org/10.1016/j.ecss.2009.01.028
 
-- Mudd, S.M., D’Alpaos, A., Morris, J.T., 2010. How does vegetation affect sedimentation on tidal marshes? Investigating particle capture and hydrodynamic controls on biologically mediated sedimentation. Journal of Geophysical Research: Earth Surface 115. https://doi.org/10.1029/2009JF001566
+**Deposition (edge-distance model)**
 
-Which was then used in:
+- Duran Vinent, O., Herbert, E.R., Coleman, D.J., Himmelstein, J.D., Kirwan, M.L.,
+  2021. Onset of runaway fragmentation of salt marshes. *One Earth* 4, 506–516.
+  https://doi.org/10.1016/j.oneear.2021.02.013
 
-- Kirwan, M.L., Mudd, S.M., 2012. Response of salt-marsh carbon accumulation to climate change. Nature 489, 550–553. https://doi.org/10.1038/nature11440
+**GPP / biomass**
 
-However, recent papers have suggested the mixing of the sediment column and low velocities on marsh surface mean that deposition is dominated by length from channel, initial suspended sediment concentration, and nothing else, and we have implemented such a model in this software:
+- Morris, J.T., Sundberg, K., Hopkinson, C.S., 2013. Salt marsh primary production
+  and its responses to relative sea level and nutrients in estuaries at Plum Island,
+  Massachusetts, and North Inlet, South Carolina, USA. *Oceanography* 26, 78–84.
+  https://doi.org/10.5670/oceanog.2013.48
 
-- Duran Vinent, O., Herbert, E.R., Coleman, D.J., Himmelstein, J.D., Kirwan, M.L., 2021. Onset of runaway fragmentation of salt marshes. One Earth 4, 506–516. https://doi.org/10.1016/j.oneear.2021.02.013
+**Compaction (mixing model)**
 
+- Morris, J.T., Barber, D.C., Callaway, J.C., Chambers, R., Hagen, S.C.,
+  Hopkinson, C.S., Johnson, B.J., Megonigal, P., Neubauer, S.C., Troxler, T.,
+  Wigand, C., 2016. Contributions of organic and inorganic matter to sediment
+  volume and accretion in tidal wetlands at steady state. *Earth's Future* 4,
+  110–121. https://doi.org/10.1002/2015EF000334
 
-The compaction model has been updated to reflect:
+**Compaction (two-stage model, alternative)**
 
-- Brain, M.J., Long, A.J., Woodroffe, S.A., Petley, D.N., Milledge, D.G., Parnell, A.C., 2012. Modelling the effects of sediment compaction on salt marsh reconstructions of recent sea-level rise. Earth and Planetary Science Letters 345–348, 180–193. https://doi.org/10.1016/j.epsl.2012.06.045
-
-
+- Brain, M.J., Long, A.J., Woodroffe, S.A., Petley, D.N., Milledge, D.G.,
+  Parnell, A.C., 2012. Modelling the effects of sediment compaction on salt marsh
+  reconstructions of recent sea-level rise. *Earth and Planetary Science Letters*
+  345–348, 180–193. https://doi.org/10.1016/j.epsl.2012.06.045
