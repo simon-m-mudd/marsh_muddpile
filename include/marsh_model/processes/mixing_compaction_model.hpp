@@ -21,11 +21,14 @@
 //   k1(d) = k1_a2 * d^2 + k1_a1 * d + k1_a0
 //   k2(d) = k2_a2 * d^2 + k2_a1 * d + k2_a0
 //
-// Default polynomial coefficients are calibrated by least-squares fit through
-// depth-binned CCN synthesis data (all countries; 91,780 observations):
+// Default polynomial coefficients are calibrated by OLS through depth-binned
+// CCN synthesis data (all countries; six 20 cm bins 0–150 cm; n=85,122 layers):
 //
-//   k1: a0=0.105944  a1=-0.012864  a2=0.027568    (R^2=0.852)
-//   k2: a0=1.399719  a1= 0.170120  a2=-0.313556   (R^2=0.949)
+//   k1: a0=0.092574  a1=+0.035029  a2=0.0  (R^2=0.72)
+//   k2: a0=1.552584  a1=-0.375221  a2=0.0  (R^2=0.80)
+//
+// The quadratic term a2 defaults to 0 (linear); set non-zero in the YAML for
+// a quadratic fit. Values are clamped at max_depth (default 1.5 m).
 //
 // Layer thickness is then back-calculated from the target DBD and the total
 // dry solid mass, and porosity is updated accordingly.
@@ -69,16 +72,6 @@ public:
         const material_catalog& catalog,
         const parameter_set& parameters) const;
 
-private:
-    // Compute LOI (organic mass fraction) for one layer.
-    double compute_loi(
-        const column_state& state,
-        int layer_index,
-        const material_catalog& catalog) const;
-
-    // Evaluate depth-dependent end-member densities [g cm^-3].
-    double k1_at_depth(double depth_m, const parameter_set& parameters) const;
-    double k2_at_depth(double depth_m, const parameter_set& parameters) const;
 };
 
 } // namespace marsh_model

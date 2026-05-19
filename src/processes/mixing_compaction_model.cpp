@@ -51,6 +51,10 @@
 #include <cmath>
 #include <stdexcept>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 namespace marsh_model
 {
 
@@ -72,67 +76,6 @@ bool is_organic(const material_properties& m)
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
-// Depth-dependent end-member densities
-// ---------------------------------------------------------------------------
-
-double mixing_compaction_model::k1_at_depth(
-    double depth_m,
-    const parameter_set& parameters) const
-{
-    const double max_depth = get_param(parameters, "mixing_compaction_max_depth_m", 1.5);
-    const double d = std::min(depth_m, max_depth);
-
-    const double a0 = get_param(parameters, "mixing_compaction_k1_a0",  0.092574);
-    const double a1 = get_param(parameters, "mixing_compaction_k1_a1",  0.035029);
-    const double a2 = get_param(parameters, "mixing_compaction_k1_a2",  0.0);
-    const double k_min = get_param(parameters, "mixing_compaction_k1_min", 0.02);
-
-    const double k = a0 + a1 * d + a2 * d * d;
-    return std::max(k, k_min);
-}
-
-double mixing_compaction_model::k2_at_depth(
-    double depth_m,
-    const parameter_set& parameters) const
-{
-    const double max_depth = get_param(parameters, "mixing_compaction_max_depth_m", 1.5);
-    const double d = std::min(depth_m, max_depth);
-
-    const double a0 = get_param(parameters, "mixing_compaction_k2_a0",  1.552584);
-    const double a1 = get_param(parameters, "mixing_compaction_k2_a1", -0.375221);
-    const double a2 = get_param(parameters, "mixing_compaction_k2_a2",  0.0);
-    const double k_min = get_param(parameters, "mixing_compaction_k2_min", 0.20);
-
-    const double k = a0 + a1 * d + a2 * d * d;
-    return std::max(k, k_min);
-}
-
-// ---------------------------------------------------------------------------
-// LOI for one layer
-// ---------------------------------------------------------------------------
-
-double mixing_compaction_model::compute_loi(
-    const column_state& state,
-    int layer_index,
-    const material_catalog& catalog) const
-{
-    const auto& mass = state.mass();
-    double organic_mass = 0.0;
-    double total_mass   = 0.0;
-
-    for (int m = 0; m < catalog.size(); ++m)
-    {
-        const double kg = mass(layer_index, m);
-        if (kg <= 0.0) continue;
-        total_mass += kg;
-        if (is_organic(catalog.get_material(m)))
-            organic_mass += kg;
-    }
-
-    return (total_mass > 0.0) ? organic_mass / total_mass : 0.0;
-}
-
-// ---------------------------------------------------------------------------
 // Main compaction entry point
 // ---------------------------------------------------------------------------
 
@@ -145,37 +88,62 @@ void mixing_compaction_model::update_compaction(
     const int n = state.n_layers();
     if (n == 0) return;
 
+    // Hoist all parameter reads out of the per-layer loop.
+    const double max_depth = get_param(parameters, "mixing_compaction_max_depth_m", 1.5);
+    const double k1_a0    = get_param(parameters, "mixing_compaction_k1_a0",   0.092574);
+    const double k1_a1    = get_param(parameters, "mixing_compaction_k1_a1",   0.035029);
+    const double k1_a2    = get_param(parameters, "mixing_compaction_k1_a2",   0.0);
+    const double k1_min   = get_param(parameters, "mixing_compaction_k1_min",  0.02);
+    const double k2_a0    = get_param(parameters, "mixing_compaction_k2_a0",   1.552584);
+    const double k2_a1    = get_param(parameters, "mixing_compaction_k2_a1",  -0.375221);
+    const double k2_a2    = get_param(parameters, "mixing_compaction_k2_a2",   0.0);
+    const double k2_min   = get_param(parameters, "mixing_compaction_k2_min",  0.20);
+
     // Surface elevation = top of the highest (last) layer.
     const double surface_elev = state.layer_top_elevation()(n - 1);
 
     const auto& thick  = state.layer_thickness();
     const auto& top_el = state.layer_top_elevation();
     const auto& mass   = state.mass();
+    const int   n_mat  = catalog.size();
 
-    Eigen::ArrayXd new_thickness  = Eigen::ArrayXd::Zero(n);
-    Eigen::ArrayXd new_porosity   = Eigen::ArrayXd::Zero(n);
-    Eigen::ArrayXd new_top_elev   = Eigen::ArrayXd::Zero(n);
+    Eigen::ArrayXd new_thickness = Eigen::ArrayXd::Zero(n);
+    Eigen::ArrayXd new_porosity  = Eigen::ArrayXd::Zero(n);
+    Eigen::ArrayXd new_top_elev  = Eigen::ArrayXd::Zero(n);
 
+    // Flag set inside OpenMP region if any material has non-positive density.
+    bool bad_density = false;
+
+#pragma omp parallel for schedule(static) if(n > 32)
     for (int i = 0; i < n; ++i)
     {
         // Depth of layer mid-point below current surface.
         const double mid_elev = top_el(i) - 0.5 * thick(i);
         const double depth_m  = std::max(0.0, surface_elev - mid_elev);
 
-        // Total dry mass and solid volume for this layer.
-        double total_mass_kg_m2   = 0.0;
-        double solid_vol_m3_m2    = 0.0;
+        // Single pass: accumulate total mass, solid volume, and organic mass.
+        double total_mass_kg_m2 = 0.0;
+        double solid_vol_m3_m2  = 0.0;
+        double organic_mass     = 0.0;
+        bool   layer_bad        = false;
 
-        for (int m = 0; m < catalog.size(); ++m)
+        for (int m = 0; m < n_mat; ++m)
         {
             const double kg = mass(i, m);
             if (kg <= 0.0) continue;
-            const double density = catalog.get_material(m).density;
-            if (density <= 0.0)
-                throw std::runtime_error(
-                    "mixing_compaction_model: material density must be positive");
+            const auto& mat = catalog.get_material(m);
+            if (mat.density <= 0.0) { layer_bad = true; break; }
             total_mass_kg_m2 += kg;
-            solid_vol_m3_m2  += kg / density;
+            solid_vol_m3_m2  += kg / mat.density;
+            if (is_organic(mat)) organic_mass += kg;
+        }
+
+        if (layer_bad)
+        {
+#pragma omp atomic write
+            bad_density = true;
+            // Leave new_thickness/new_porosity at zero; error thrown below.
+            continue;
         }
 
         if (total_mass_kg_m2 <= 0.0)
@@ -187,17 +155,20 @@ void mixing_compaction_model::update_compaction(
             continue;
         }
 
-        // LOI and depth-dependent end-member densities.
-        const double loi = compute_loi(state, i, catalog);
-        const double k1  = k1_at_depth(depth_m, parameters);   // g cm^-3
-        const double k2  = k2_at_depth(depth_m, parameters);   // g cm^-3
+        // Depth-dependent end-member densities [g cm^-3].
+        const double d  = std::min(depth_m, max_depth);
+        const double k1 = std::max(k1_a0 + k1_a1 * d + k1_a2 * d * d, k1_min);
+        const double k2 = std::max(k2_a0 + k2_a1 * d + k2_a2 * d * d, k2_min);
+
+        // LOI from the single-pass organic/total accumulation.
+        const double loi = organic_mass / total_mass_kg_m2;
 
         // Mixing model DBD [g cm^-3] → [kg m^-3].
-        // DBD = 1 / (loi/k1 + (1-loi)/k2)
-        const double denom = loi / k1 + (1.0 - loi) / k2;
-        // denom is always positive because k1,k2>0 and loi in [0,1]
-        const double dbd_gcm3  = 1.0 / denom;
-        const double dbd_kgm3  = dbd_gcm3 * 1000.0;
+        // Algebraic form with 1 division instead of 3:
+        //   DBD = k1*k2 / (loi*k2 + (1-loi)*k1)
+        const double mineral_frac = 1.0 - loi;
+        const double dbd_gcm3 = k1 * k2 / (loi * k2 + mineral_frac * k1);
+        const double dbd_kgm3 = dbd_gcm3 * 1000.0;
 
         // New thickness from mass and DBD.
         const double new_thick = total_mass_kg_m2 / dbd_kgm3;
@@ -206,14 +177,16 @@ void mixing_compaction_model::update_compaction(
         double porosity = 0.0;
         if (new_thick > solid_vol_m3_m2)
             porosity = (new_thick - solid_vol_m3_m2) / new_thick;
-        // If solid volume exceeds the mixing-model thickness (shouldn't happen
-        // with valid data), clamp porosity to zero.
 
         new_thickness(i) = new_thick;
         new_porosity(i)  = porosity;
     }
 
-    // Rebuild top elevations from the fixed column base.
+    if (bad_density)
+        throw std::runtime_error(
+            "mixing_compaction_model: material density must be positive");
+
+    // Rebuild top elevations from the fixed column base (serial — sequential dependency).
     const double base_elev = top_el(0) - thick(0);
     double running_top = base_elev;
     for (int i = 0; i < n; ++i)
